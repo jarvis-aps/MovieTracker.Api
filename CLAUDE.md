@@ -54,7 +54,17 @@ docker exec -it movietracker-db psql -U movietracker -d movietracker
 
 ## Архитектура
 
-Текущее состояние — минимальный каркас: `Program.cs` (Minimal API, top-level statements), `MovieTrackerDbContext.cs` (пустой `DbContext`, зарегистрирован через `AddDbContext` с `UseNpgsql`). В `Program.cs` пока остаётся шаблонный эндпоинт `/weatherforecast` из `dotnet new webapi` — будет заменён реальными эндпоинтами по ходу этапа 1.
+Этап 1 закрыт. Структура бэкенда:
+
+```
+Program.cs          # точка входа + все Minimal API endpoints инлайн (GET/PATCH/POST /movies) — осознанно не разнесены по файлам
+Models/              # Movie, Status (enum), NewMovie (DTO для POST-запроса)
+Data/                # MovieTrackerDbContext
+Migrations/          # генерируется EF Core, руками не редактировать
+client/              # React + TypeScript + Vite, отдельный фронтенд-проект
+```
+
+Namespace'ы соответствуют папкам (`MovieTracker.Api.Models`, `MovieTracker.Api.Data`) — стандартная C#-конвенция, Rider иначе подсвечивает warning. `Program.cs` **намеренно** не растащен на `Endpoints/`/`Controllers/` — это уже следующий уровень структуры (стадия 2-3), вводить его сейчас значило бы architecture без повода.
 
 Архитектура **осознанно не вводится заранее** — это прямое правило проекта («Философия проекта» в `PROJECT_BRIEF.md`): слои, CQRS, mediator-паттерн, модульность появляются только с реальным поводом (вторая сущность, вторая связь, реальная бизнес-логика), а не потому что «так принято». Не предлагай и не добавляй эти слои преждевременно, даже если это выглядит как «best practice» — на этапе 1 это осознанный анти-паттерн для целей проекта.
 

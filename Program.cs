@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using MovieTracker.Api;
+using MovieTracker.Api.Data;
+using MovieTracker.Api.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,9 +38,9 @@ if (app.Environment.IsDevelopment())
 
     if (!db.Movies.Any())
     {
-        var movie1 = new Movie("Тед Лассо") { Status = Status.NotWatched };
-        var movie2 = new Movie("Ананасовый экспресс") { Status = Status.NotWatched };
-        var movie3 = new Movie("Пляжный бездельник") { Status = Status.NotWatched };
+        var movie1 = new Movie("Тед Лассо", Status.NotWatched) { Status = Status.NotWatched };
+        var movie2 = new Movie("Ананасовый экспресс", Status.NotWatched) { Status = Status.NotWatched };
+        var movie3 = new Movie("Пляжный бездельник", Status.NotWatched) { Status = Status.NotWatched };
         db.Movies.Add(movie1);
         db.Movies.Add(movie2);
         db.Movies.Add(movie3);      
@@ -64,6 +65,21 @@ app.MapPatch("/movies/{id}/status", async (int id, MovieTrackerDbContext db, Sta
     await db.SaveChangesAsync();
     
     return Results.Ok(currentMovie.Status);
+});
+
+app.MapPost("/movies", async (MovieTrackerDbContext db, NewMovie newMovie) =>
+{
+    var movie = new Movie(newMovie.Title, newMovie.Status);
+    
+    if (db.Movies.Any(m => m.Title == newMovie.Title))
+    {
+        return Results.BadRequest();
+    }
+    
+    await db.Movies.AddAsync(movie);
+    await db.SaveChangesAsync();
+    
+    return Results.Created($"/movies/{movie.Id}", movie);
 });
 
 app.Run();

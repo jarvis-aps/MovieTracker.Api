@@ -1,4 +1,4 @@
-namespace MovieTracker.Api;
+namespace MovieTracker.Api.Models;
 
 public enum Status
 {
