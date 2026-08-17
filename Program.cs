@@ -51,7 +51,10 @@ if (app.Environment.IsDevelopment())
 app.MapGet("/movies", async (MovieTrackerDbContext db) =>
 {
     List<Movie> movieList = await db.Movies.ToListAsync();
-    return movieList;
+    List<MovieDto> moviesDto = new List<MovieDto>(movieList.Count);
+    moviesDto.AddRange(movieList.Select(movie => new MovieDto(movie.Id, movie.Title, movie.Status)));
+
+    return moviesDto;
 });
 
 app.MapPatch("/movies/{id}/status", async (int id, MovieTrackerDbContext db, Status status) =>
@@ -63,8 +66,9 @@ app.MapPatch("/movies/{id}/status", async (int id, MovieTrackerDbContext db, Sta
     
     currentMovie.Status = status;
     await db.SaveChangesAsync();
+    var movieDto = new MovieDto(id, currentMovie.Title, currentMovie.Status);
     
-    return Results.Ok(currentMovie.Status);
+    return Results.Ok(movieDto);
 });
 
 app.MapPost("/movies", async (MovieTrackerDbContext db, NewMovie newMovie) =>
@@ -79,7 +83,8 @@ app.MapPost("/movies", async (MovieTrackerDbContext db, NewMovie newMovie) =>
     await db.Movies.AddAsync(movie);
     await db.SaveChangesAsync();
     
-    return Results.Created($"/movies/{movie.Id}", movie);
+    var movieDto = new MovieDto(movie.Id, movie.Title, movie.Status);
+    return Results.Created($"/movies/{movieDto.Id}", movieDto);
 });
 
 app.Run();
