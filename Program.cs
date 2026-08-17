@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using MovieTracker.Api.Data;
 using MovieTracker.Api.Models;
+using MovieTracker.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,9 +21,10 @@ builder.Services.AddCors(options =>
     });
 });
 
+builder.Services.AddScoped<MovieService>();
+
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -48,43 +50,18 @@ if (app.Environment.IsDevelopment())
     }
 }
 
-app.MapGet("/movies", async (MovieTrackerDbContext db) =>
-{
-    List<Movie> movieList = await db.Movies.ToListAsync();
-    List<MovieDto> moviesDto = new List<MovieDto>(movieList.Count);
-    moviesDto.AddRange(movieList.Select(movie => new MovieDto(movie.Id, movie.Title, movie.Status)));
+app.MapGet("/movies", async (MovieService service) => await service.GetMoviesAsync());
 
-    return moviesDto;
+app.MapPatch("/movies/{id}/status", async (int id, Status status, MovieService service) =>
+{
+    var result = await service.UpdateStatusAsync(id, status);
+    return result is null ? Results.NotFound() : Results.Ok(result);
 });
 
-app.MapPatch("/movies/{id}/status", async (int id, MovieTrackerDbContext db, Status status) =>
+app.MapPost("/movies", async (MovieService service, NewMovie newMovie) =>
 {
-    var currentMovie = await db.Movies.FirstOrDefaultAsync(m => m.Id == id);
-
-    if (currentMovie == null)
-        return Results.NotFound();
-    
-    currentMovie.Status = status;
-    await db.SaveChangesAsync();
-    var movieDto = new MovieDto(id, currentMovie.Title, currentMovie.Status);
-    
-    return Results.Ok(movieDto);
-});
-
-app.MapPost("/movies", async (MovieTrackerDbContext db, NewMovie newMovie) =>
-{
-    var movie = new Movie(newMovie.Title, newMovie.Status);
-    
-    if (db.Movies.Any(m => m.Title == newMovie.Title))
-    {
-        return Results.BadRequest();
-    }
-    
-    await db.Movies.AddAsync(movie);
-    await db.SaveChangesAsync();
-    
-    var movieDto = new MovieDto(movie.Id, movie.Title, movie.Status);
-    return Results.Created($"/movies/{movieDto.Id}", movieDto);
+    var result = await service.CreateMovieAsync(newMovie);
+    return result is null ? Results.BadRequest() : Results.Created($"/movies/{result.Id}", result);
 });
 
 app.Run();
