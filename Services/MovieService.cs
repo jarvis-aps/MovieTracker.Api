@@ -16,12 +16,21 @@ public class MovieService
         _logger= logger;
     }
 
-    public async Task<List<MovieDto>> GetMoviesAsync()
+    public async Task<List<MovieDto>> GetMoviesAsync(Status? status, Genre? genre)
     {
-        List<Movie> movieList = await _context.Movies.ToListAsync();
+        IQueryable<Movie> query = _context.Movies;
+        
+        if (status != null) 
+            query = query.Where(m => m.Status == status);
+        
+        if (genre != null) 
+            query = query.Where(m => m.Genres.Contains((Genre)genre));
+        
+        List<Movie> movieList = await query.ToListAsync();
         List<MovieDto> moviesDto = new List<MovieDto>(movieList.Count);
+        
         moviesDto.AddRange(movieList.Select(movie => new MovieDto(movie.Id, movie.Title, movie.Status,  movie.Genres, movie.Year, movie.Rating)));
-
+        
         return moviesDto;
     }
 
