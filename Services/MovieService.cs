@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using MovieTracker.Api.Data;
+using MovieTracker.Api.Exceptions;
 using MovieTracker.Api.Models;
 
 namespace MovieTracker.Api.Services;
@@ -7,17 +8,19 @@ namespace MovieTracker.Api.Services;
 public class MovieService
 {
     private readonly MovieTrackerDbContext _context;
+    private readonly ILogger<MovieService> _logger;
 
-    public MovieService(MovieTrackerDbContext context)
+    public MovieService(MovieTrackerDbContext context, ILogger<MovieService> logger)
     {
         _context = context;
+        _logger= logger;
     }
 
     public async Task<List<MovieDto>> GetMoviesAsync()
     {
         List<Movie> movieList = await _context.Movies.ToListAsync();
         List<MovieDto> moviesDto = new List<MovieDto>(movieList.Count);
-        moviesDto.AddRange(movieList.Select(movie => new MovieDto(movie.Id, movie.Title, movie.Status)));
+        moviesDto.AddRange(movieList.Select(movie => new MovieDto(movie.Id, movie.Title, movie.Status,  movie.Genres, movie.Year, movie.Rating)));
 
         return moviesDto;
     }
@@ -32,14 +35,35 @@ public class MovieService
         currentMovie.Status = status;
         await _context.SaveChangesAsync();
         
-        var movieDto = new MovieDto(id, currentMovie.Title, currentMovie.Status);
+        var movieDto = new MovieDto(id, currentMovie.Title, currentMovie.Status,  currentMovie.Genres, currentMovie.Year, currentMovie.Rating);
+
+        return movieDto;
+    }
+    
+    public async Task<MovieDto?> UpdateRatingAsync(int id, float rating)
+    {
+        var currentMovie = await _context.Movies.FirstOrDefaultAsync(m => m.Id == id);
+
+        if (currentMovie == null)
+            return null;
+
+        if (rating < 0 || rating > 10)
+        {
+            _logger.LogWarning("For ID {0}, rating {1} not valid", id, rating);
+            throw new InvalidRatingException("Rating must be between 0 and 10");
+        }
+
+        currentMovie.Rating = rating;
+        await _context.SaveChangesAsync();
+        
+        var movieDto = new MovieDto(id, currentMovie.Title, currentMovie.Status,  currentMovie.Genres, currentMovie.Year, currentMovie.Rating);
 
         return movieDto;
     }
 
     public async Task<MovieDto?> CreateMovieAsync(NewMovie newMovie)
     {
-        var movie = new Movie(newMovie.Title, newMovie.Status);
+        var movie = new Movie(newMovie.Title, newMovie.Status, newMovie.Genres, newMovie.Year);
 
         if (_context.Movies.Any(m => m.Title == newMovie.Title))
         {
@@ -49,7 +73,7 @@ public class MovieService
         await _context.Movies.AddAsync(movie);
         await _context.SaveChangesAsync();
 
-        var movieDto = new MovieDto(movie.Id, movie.Title, movie.Status);
+        var movieDto = new MovieDto(movie.Id, movie.Title, movie.Status,  movie.Genres, movie.Year, movie.Rating);
         
         return movieDto;
     }

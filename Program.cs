@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using MovieTracker.Api.Data;
+using MovieTracker.Api.Exceptions;
 using MovieTracker.Api.Models;
 using MovieTracker.Api.Services;
 
@@ -40,9 +41,9 @@ if (app.Environment.IsDevelopment())
 
     if (!db.Movies.Any())
     {
-        var movie1 = new Movie("Тед Лассо", Status.NotWatched) { Status = Status.NotWatched };
-        var movie2 = new Movie("Ананасовый экспресс", Status.NotWatched) { Status = Status.NotWatched };
-        var movie3 = new Movie("Пляжный бездельник", Status.NotWatched) { Status = Status.NotWatched };
+        var movie1 = new Movie("Тед Лассо", Status.NotWatched, [Genre.Comedy, Genre.Sport], 2020) { Status = Status.NotWatched };
+        var movie2 = new Movie("Ананасовый экспресс", Status.NotWatched, [Genre.Action, Genre.Comedy], 2008) { Status = Status.NotWatched };
+        var movie3 = new Movie("Пляжный бездельник", Status.NotWatched, [Genre.Action, Genre.Comedy], 2019) { Status = Status.NotWatched };
         db.Movies.Add(movie1);
         db.Movies.Add(movie2);
         db.Movies.Add(movie3);      
@@ -55,6 +56,22 @@ app.MapGet("/movies", async (MovieService service) => await service.GetMoviesAsy
 app.MapPatch("/movies/{id}/status", async (int id, Status status, MovieService service) =>
 {
     var result = await service.UpdateStatusAsync(id, status);
+    return result is null ? Results.NotFound() : Results.Ok(result);
+});
+
+app.MapPatch("/movies/{id}/rating", async (int id, float rating, MovieService service) =>
+{
+    MovieDto? result;
+    
+    try
+    {
+        result = await service.UpdateRatingAsync(id, rating);
+    }
+    catch (InvalidRatingException exception)
+    {
+        return Results.BadRequest(exception.ErrorMessage);
+    }
+
     return result is null ? Results.NotFound() : Results.Ok(result);
 });
 
