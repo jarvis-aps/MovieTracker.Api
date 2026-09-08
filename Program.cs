@@ -51,7 +51,7 @@ if (app.Environment.IsDevelopment())
     }
 }
 
-app.MapGet("/movies", async (MovieService service, Status? status, Genre? genre) => await service.GetMoviesAsync(status, genre));
+app.MapGet("/movies", async (MovieService service, Status? status, Genre? genre, SortBy? sortBy, bool? sortByDesc) => await service.GetMoviesAsync(status, genre, sortBy, sortByDesc));
 
 app.MapPatch("/movies/{id}/status", async (int id, Status status, MovieService service) =>
 {

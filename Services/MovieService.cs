@@ -16,16 +16,32 @@ public class MovieService
         _logger= logger;
     }
 
-    public async Task<List<MovieDto>> GetMoviesAsync(Status? status, Genre? genre)
+    public async Task<List<MovieDto>> GetMoviesAsync(Status? status, Genre? genre, SortBy? sortBy, bool? sortByDesc)
     {
         IQueryable<Movie> query = _context.Movies;
-        
-        if (status != null) 
+
+        if (status != null)
             query = query.Where(m => m.Status == status);
-        
-        if (genre != null) 
+
+        if (genre != null)
             query = query.Where(m => m.Genres.Contains((Genre)genre));
-        
+
+        switch (sortBy)
+        {
+            case SortBy.Title:
+                query = sortByDesc is true ? query.OrderByDescending(m => m.Title) : query.OrderBy(m => m.Title);
+                break;
+            case SortBy.Status:
+                query = sortByDesc is true ? query.OrderByDescending(m => m.Status) : query.OrderBy(m => m.Status);
+                break;
+            case SortBy.Rating:
+                query = sortByDesc is true ? query.OrderByDescending(m => m.Rating) : query.OrderBy(m => m.Rating);
+                break;
+            case SortBy.Genre:
+            case null:
+                break;
+        }
+
         List<Movie> movieList = await query.ToListAsync();
         List<MovieDto> moviesDto = new List<MovieDto>(movieList.Count);
         
