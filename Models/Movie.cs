@@ -8,12 +8,14 @@ public class Movie
     public List<Genre> Genres { get; set; }
     public string Title { get; set; }
     public Status Status { get; set; }
+    public string? Notes { get; set; }
 
-    public Movie(string title,  Status status, List<Genre> genres, int year)
+    public Movie(string title,  Status status, List<Genre> genres, int year, string? notes)
     {
         Title = title;
         Status =  status;
         Genres = genres;
         Year =  year;
+        Notes = notes;
     }
 }
