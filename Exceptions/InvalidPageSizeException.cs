@@ -1,10 +1,10 @@
 namespace MovieTracker.Api.Exceptions;
 
-public class InvalidRatingException : Exception
+public class InvalidPageSizeException : Exception
 {
     public string ErrorMessage { get; }
     
-    public InvalidRatingException(string message): base(message)
+    public InvalidPageSizeException(string message): base(message)
     {
         ErrorMessage = message;
     }

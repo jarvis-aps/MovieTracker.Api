@@ -16,31 +16,45 @@ public class MovieService
         _logger= logger;
     }
 
-    public async Task<List<MovieDto>> GetMoviesAsync(Status? status, Genre? genre, SortBy? sortBy, bool? sortByDesc)
+    public async Task<List<MovieDto>> GetMoviesAsync(MovieQueryParameters movieQueryParameters)
     {
         IQueryable<Movie> query = _context.Movies;
+        
+        movieQueryParameters.Page ??= 1;
+        movieQueryParameters.PageSize ??= 10;
+        
+        if(movieQueryParameters.Page <= 0 || movieQueryParameters.PageSize <= 0)
+        {
+            _logger.LogWarning("Page {0} or pageSize {1} not valid", movieQueryParameters.Page, movieQueryParameters.PageSize);
+            throw new InvalidPageSizeException("Page and PageSize must be greater than 0");
+        }
 
-        if (status != null)
-            query = query.Where(m => m.Status == status);
+        if (movieQueryParameters.Status != null)
+            query = query.Where(m => m.Status == movieQueryParameters.Status);
 
-        if (genre != null)
-            query = query.Where(m => m.Genres.Contains((Genre)genre));
+        if (movieQueryParameters.Genre != null)
+            query = query.Where(m => m.Genres.Contains((Genre)movieQueryParameters.Genre));
 
-        switch (sortBy)
+        switch (movieQueryParameters.SortBy)
         {
             case SortBy.Title:
-                query = sortByDesc is true ? query.OrderByDescending(m => m.Title) : query.OrderBy(m => m.Title);
+                query = movieQueryParameters.SortByDesc is true ? query.OrderByDescending(m => m.Title) : query.OrderBy(m => m.Title);
                 break;
             case SortBy.Status:
-                query = sortByDesc is true ? query.OrderByDescending(m => m.Status) : query.OrderBy(m => m.Status);
+                query = movieQueryParameters.SortByDesc is true ? query.OrderByDescending(m => m.Status) : query.OrderBy(m => m.Status);
                 break;
             case SortBy.Rating:
-                query = sortByDesc is true ? query.OrderByDescending(m => m.Rating) : query.OrderBy(m => m.Rating);
+                query = movieQueryParameters.SortByDesc is true ? query.OrderByDescending(m => m.Rating) : query.OrderBy(m => m.Rating);
                 break;
             case SortBy.Genre:
             case null:
                 break;
         }
+
+        if (!string.IsNullOrEmpty(movieQueryParameters.SearchPart))
+            query = query.Where(m => EF.Functions.ILike(m.Title, $"%{movieQueryParameters.SearchPart}%"));
+
+        query = query.Skip((int)((movieQueryParameters.Page - 1) * movieQueryParameters.PageSize)).Take((int)movieQueryParameters.PageSize);
 
         List<Movie> movieList = await query.ToListAsync();
         List<MovieDto> moviesDto = new List<MovieDto>(movieList.Count);

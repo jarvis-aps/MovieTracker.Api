@@ -51,7 +51,21 @@ if (app.Environment.IsDevelopment())
     }
 }
 
-app.MapGet("/movies", async (MovieService service, Status? status, Genre? genre, SortBy? sortBy, bool? sortByDesc) => await service.GetMoviesAsync(status, genre, sortBy, sortByDesc));
+app.MapGet("/movies", async (MovieService service, [AsParameters]MovieQueryParameters movieQueryParameters) =>
+{
+    List<MovieDto> result;
+    
+    try
+    {
+        result = await service.GetMoviesAsync(movieQueryParameters);
+    }
+    catch (InvalidPageSizeException exception)
+    {
+        return Results.BadRequest(exception.ErrorMessage);
+    }
+    
+    return Results.Ok(result);
+});
 
 app.MapPatch("/movies/{id}/status", async (int id, Status status, MovieService service) =>
 {
