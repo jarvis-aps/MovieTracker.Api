@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using MovieTracker.Api.Data;
 using MovieTracker.Api.Exceptions;
@@ -23,8 +24,23 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddScoped<MovieService>();
+builder.Services.AddProblemDetails();
 
 var app = builder.Build();
+
+app.UseExceptionHandler(exceptionHandlerApp =>
+{
+    exceptionHandlerApp.Run(async context =>
+    {
+        var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+        if (exception is BadHttpRequestException badRequestException)
+            context.Response.StatusCode = badRequestException.StatusCode;
+        var problemDetailsService = context.RequestServices.GetRequiredService<IProblemDetailsService>();
+        await problemDetailsService.WriteAsync(new ProblemDetailsContext { HttpContext = context });
+    });
+});
+
+app.UseStatusCodePages();
 
 if (app.Environment.IsDevelopment())
 {
