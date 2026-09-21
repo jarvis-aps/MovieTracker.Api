@@ -7,8 +7,6 @@ using MovieTracker.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
 builder.Services.AddDbContext<MovieTrackerDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("MovieTrackerDb")));
@@ -24,6 +22,7 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddScoped<MovieService>();
+builder.Services.AddAsyncInitializer<MovieSeeder>();
 builder.Services.AddProblemDetails();
 
 var app = builder.Build();
@@ -49,23 +48,6 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors();
-
-if (app.Environment.IsDevelopment())
-{
-    using var scope = app.Services.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<MovieTrackerDbContext>();
-
-    if (!db.Movies.Any())
-    {
-        var movie1 = new Movie("Тед Лассо", Status.NotWatched, [Genre.Comedy, Genre.Sport], 2020, null) { Status = Status.NotWatched };
-        var movie2 = new Movie("Ананасовый экспресс", Status.NotWatched, [Genre.Action, Genre.Comedy], 2008, null) { Status = Status.NotWatched };
-        var movie3 = new Movie("Пляжный бездельник", Status.NotWatched, [Genre.Action, Genre.Comedy], 2019, "example") { Status = Status.NotWatched };
-        db.Movies.Add(movie1);
-        db.Movies.Add(movie2);
-        db.Movies.Add(movie3);      
-        db.SaveChanges();
-    }
-}
 
 app.MapGet("/movies", async (MovieService service, [AsParameters]MovieQueryParameters movieQueryParameters) =>
 {
@@ -117,4 +99,4 @@ app.MapPost("/movies", async (MovieService service, NewMovie newMovie) =>
     return result is null ? Results.BadRequest() : Results.Created($"/movies/{result.Id}", result);
 });
 
-app.Run();
+await app.InitAndRunAsync();
