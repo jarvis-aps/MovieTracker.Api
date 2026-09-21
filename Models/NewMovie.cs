@@ -5,14 +5,14 @@ public class NewMovie
     public string Title { get; }
     public Status Status { get; }
     public int Year { get; set; }
-    public List<Genre> Genres { get; set; }
+    public List<int> GenresId { get; set; }
     public string? Notes { get; }
 
-    public NewMovie(string title,  Status status, List<Genre> genres,  int year, string? notes)
+    public NewMovie(string title,  Status status, List<int> genresId,  int year, string? notes)
     {
         Title = title;
         Status = status;
-        Genres = genres;
+        GenresId = genresId;
         Year = year;
         Notes = notes;
     }

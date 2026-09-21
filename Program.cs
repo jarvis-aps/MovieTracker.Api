@@ -22,7 +22,9 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddScoped<MovieService>();
+builder.Services.AddAsyncInitializer<GenresSeeder>();
 builder.Services.AddAsyncInitializer<MovieSeeder>();
+
 builder.Services.AddProblemDetails();
 
 var app = builder.Build();

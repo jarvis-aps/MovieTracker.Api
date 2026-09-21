@@ -18,7 +18,7 @@ public class MovieService
 
     public async Task<List<MovieDto>> GetMoviesAsync(MovieQueryParameters movieQueryParameters)
     {
-        IQueryable<Movie> query = _context.Movies;
+        IQueryable<Movie> query = _context.Movies.Include(m => m.Genres);
         
         movieQueryParameters.Page ??= 1;
         movieQueryParameters.PageSize ??= 10;
@@ -32,8 +32,8 @@ public class MovieService
         if (movieQueryParameters.Status != null)
             query = query.Where(m => m.Status == movieQueryParameters.Status);
 
-        if (movieQueryParameters.Genre != null)
-            query = query.Where(m => m.Genres.Contains((Genre)movieQueryParameters.Genre));
+        if (movieQueryParameters.GenreId != null)
+            query = query.Where(m => m.Genres.Any(g => g.Id == movieQueryParameters.GenreId));
 
         switch (movieQueryParameters.SortBy)
         {
@@ -59,44 +59,46 @@ public class MovieService
         List<Movie> movieList = await query.ToListAsync();
         List<MovieDto> moviesDto = new List<MovieDto>(movieList.Count);
         
-        moviesDto.AddRange(movieList.Select(movie => new MovieDto(movie.Id, movie.Title, movie.Status,  movie.Genres, movie.Year, movie.Rating, movie.Notes)));
+        moviesDto.AddRange(movieList.Select(movie => new MovieDto(movie.Id, movie.Title, movie.Status, movie.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList(), movie.Year, movie.Rating, movie.Notes)));
         
         return moviesDto;
     }
 
     public async Task<MovieDto?> UpdateStatusAsync(int id, Status status)
     {
-        var currentMovie = await _context.Movies.FirstOrDefaultAsync(m => m.Id == id);
+        var currentMovie = await _context.Movies.Include(m => m.Genres).FirstOrDefaultAsync(m => m.Id == id);
 
         if (currentMovie == null)
             return null;
 
         currentMovie.Status = status;
         await _context.SaveChangesAsync();
-        
-        var movieDto = new MovieDto(id, currentMovie.Title, currentMovie.Status,  currentMovie.Genres, currentMovie.Year, currentMovie.Rating, currentMovie.Notes);
 
+        var genresDto = currentMovie.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList();
+        var movieDto = new MovieDto(id, currentMovie.Title, currentMovie.Status, genresDto, currentMovie.Year, currentMovie.Rating, currentMovie.Notes);
+        
         return movieDto;
     }
     
     public async Task<MovieDto?> UpdateNotesAsync(int id, string notes)
     {
-        var currentMovie = await _context.Movies.FirstOrDefaultAsync(m => m.Id == id);
+        var currentMovie = await _context.Movies.Include(m => m.Genres).FirstOrDefaultAsync(m => m.Id == id);
 
         if (currentMovie == null)
             return null;
 
         currentMovie.Notes = notes;
         await _context.SaveChangesAsync();
-        
-        var movieDto = new MovieDto(id, currentMovie.Title, currentMovie.Status,  currentMovie.Genres, currentMovie.Year, currentMovie.Rating, currentMovie.Notes);
+
+        var genresDto = currentMovie.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList();
+        var movieDto = new MovieDto(id, currentMovie.Title, currentMovie.Status, genresDto, currentMovie.Year, currentMovie.Rating, currentMovie.Notes);
 
         return movieDto;
     }
     
     public async Task<MovieDto?> UpdateRatingAsync(int id, float rating)
     {
-        var currentMovie = await _context.Movies.FirstOrDefaultAsync(m => m.Id == id);
+        var currentMovie = await _context.Movies.Include(m => m.Genres).FirstOrDefaultAsync(m => m.Id == id);
 
         if (currentMovie == null)
             return null;
@@ -109,16 +111,29 @@ public class MovieService
 
         currentMovie.Rating = rating;
         await _context.SaveChangesAsync();
-        
-        var movieDto = new MovieDto(id, currentMovie.Title, currentMovie.Status,  currentMovie.Genres, currentMovie.Year, currentMovie.Rating, currentMovie.Notes);
+
+        var genresDto = currentMovie.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList();
+        var movieDto = new MovieDto(id, currentMovie.Title, currentMovie.Status, genresDto, currentMovie.Year, currentMovie.Rating, currentMovie.Notes);
 
         return movieDto;
     }
 
     public async Task<MovieDto?> CreateMovieAsync(NewMovie newMovie)
     {
-        var movie = new Movie(newMovie.Title, newMovie.Status, newMovie.Genres, newMovie.Year, newMovie.Notes);
+        var movie = new Movie(newMovie.Title, newMovie.Status, newMovie.Year, newMovie.Notes);
 
+        var currentGenres = new List<Genre>();
+        
+        foreach (var genreId in newMovie.GenresId)
+        {
+            var currentGenre = await _context.Genres.FirstOrDefaultAsync(g => g.Id == genreId);
+            
+            if(currentGenre != null)
+                currentGenres.Add(currentGenre);
+        }
+        
+        movie.Genres = currentGenres;
+        
         if (_context.Movies.Any(m => m.Title == newMovie.Title))
         {
             return null;
@@ -127,7 +142,8 @@ public class MovieService
         await _context.Movies.AddAsync(movie);
         await _context.SaveChangesAsync();
 
-        var movieDto = new MovieDto(movie.Id, movie.Title, movie.Status,  movie.Genres, movie.Year, movie.Rating, movie.Notes);
+        var genresDto = movie.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList();
+        var movieDto = new MovieDto(movie.Id, movie.Title, movie.Status, genresDto, movie.Year, movie.Rating, movie.Notes);
         
         return movieDto;
     }
