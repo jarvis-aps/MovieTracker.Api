@@ -2,6 +2,7 @@ namespace MovieTracker.Api.Models;
 
 public enum Status
 {
-    Watched,
-    NotWatched
+    NotWatched,
+    Watching,
+    Watched
 }

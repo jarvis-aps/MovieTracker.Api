@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using MovieTracker.Api.Data;
+using MovieTracker.Api.Seeders;
 using MovieTracker.Api.Exceptions;
+using MovieTracker.Api.Initializer;
 using MovieTracker.Api.Models;
 
 namespace MovieTracker.Api.Services;
@@ -18,7 +19,7 @@ public class MovieService
 
     public async Task<List<MovieDto>> GetMoviesAsync(MovieQueryParameters movieQueryParameters)
     {
-        IQueryable<Movie> query = _context.Movies.Include(m => m.Genres);
+        IQueryable<Movie> movies = _context.Movies;
         
         movieQueryParameters.Page ??= 1;
         movieQueryParameters.PageSize ??= 10;
@@ -29,11 +30,27 @@ public class MovieService
             throw new InvalidPageSizeException("Page and PageSize must be greater than 0");
         }
 
-        if (movieQueryParameters.Status != null)
-            query = query.Where(m => m.Status == movieQueryParameters.Status);
-
         if (movieQueryParameters.GenreId != null)
-            query = query.Where(m => m.Genres.Any(g => g.Id == movieQueryParameters.GenreId));
+            movies = movies.Where(m => m.Genres.Any(g => g.Id == movieQueryParameters.GenreId));
+
+        if (!string.IsNullOrEmpty(movieQueryParameters.SearchPart))
+            movies = movies.Where(m => EF.Functions.ILike(m.Title, $"%{movieQueryParameters.SearchPart}%"));
+
+        var userId = movieQueryParameters.UserId;
+
+        // LEFT JOIN на данные пользователя: фильм без записи UserMovieData остаётся в списке как NotWatched без оценки
+        var query = movies.Select(m => new
+        {
+            m.Id,
+            m.Title,
+            m.Year,
+            Genres = m.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList(),
+            Rating = m.MoviesData.Where(d => d.UserId == userId).Select(d => d.Rating).FirstOrDefault(),
+            UserStatus = m.MoviesData.Where(d => d.UserId == userId).Select(d => (Status?)d.Status).FirstOrDefault() ?? Status.NotWatched
+        });
+
+        if (movieQueryParameters.Status != null)
+            query = query.Where(m => m.UserStatus == movieQueryParameters.Status);
 
         switch (movieQueryParameters.SortBy)
         {
@@ -41,66 +58,57 @@ public class MovieService
                 query = movieQueryParameters.SortByDesc is true ? query.OrderByDescending(m => m.Title) : query.OrderBy(m => m.Title);
                 break;
             case SortBy.Status:
-                query = movieQueryParameters.SortByDesc is true ? query.OrderByDescending(m => m.Status) : query.OrderBy(m => m.Status);
+                query = movieQueryParameters.SortByDesc is true ? query.OrderByDescending(m => m.UserStatus) : query.OrderBy(m => m.UserStatus);
                 break;
             case SortBy.Rating:
-                query = movieQueryParameters.SortByDesc is true ? query.OrderByDescending(m => m.Rating) : query.OrderBy(m => m.Rating);
+                // фильмы без оценки всегда в конце: пользователь мог начать смотреть, но ещё не оценить
+                query = movieQueryParameters.SortByDesc is true ? query.OrderBy(m => m.Rating == null).ThenByDescending(m => m.Rating) : query.OrderBy(m => m.Rating == null).ThenBy(m => m.Rating);
                 break;
             case SortBy.Genre:
             case null:
                 break;
         }
 
-        if (!string.IsNullOrEmpty(movieQueryParameters.SearchPart))
-            query = query.Where(m => EF.Functions.ILike(m.Title, $"%{movieQueryParameters.SearchPart}%"));
-
         query = query.Skip((int)((movieQueryParameters.Page - 1) * movieQueryParameters.PageSize)).Take((int)movieQueryParameters.PageSize);
 
-        List<Movie> movieList = await query.ToListAsync();
-        List<MovieDto> moviesDto = new List<MovieDto>(movieList.Count);
-        
-        moviesDto.AddRange(movieList.Select(movie => new MovieDto(movie.Id, movie.Title, movie.Status, movie.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList(), movie.Year, movie.Rating, movie.Notes)));
-        
-        return moviesDto;
+        var rows = await query.ToListAsync();
+
+        return rows.Select(m => new MovieDto(m.Id, m.Title, m.Genres, m.Year, m.Rating, m.UserStatus)).ToList();
     }
 
-    public async Task<MovieDto?> UpdateStatusAsync(int id, Status status)
+    public async Task<MovieDto?> UpdateStatusAsync(int id, int userId, Status status)
     {
         var currentMovie = await _context.Movies.Include(m => m.Genres).FirstOrDefaultAsync(m => m.Id == id);
 
-        if (currentMovie == null)
+        if (currentMovie == null || !await _context.Users.AnyAsync(u => u.Id == userId))
             return null;
 
-        currentMovie.Status = status;
+        var data = await GetOrCreateUserDataAsync(id, userId);
+        data.Status = status;
         await _context.SaveChangesAsync();
 
-        var genresDto = currentMovie.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList();
-        var movieDto = new MovieDto(id, currentMovie.Title, currentMovie.Status, genresDto, currentMovie.Year, currentMovie.Rating, currentMovie.Notes);
-        
-        return movieDto;
+        return ToDto(currentMovie, data);
     }
     
-    public async Task<MovieDto?> UpdateNotesAsync(int id, string notes)
+    public async Task<MovieDto?> UpdateNotesAsync(int id, int userId, string notes)
     {
         var currentMovie = await _context.Movies.Include(m => m.Genres).FirstOrDefaultAsync(m => m.Id == id);
 
-        if (currentMovie == null)
+        if (currentMovie == null || !await _context.Users.AnyAsync(u => u.Id == userId))
             return null;
 
-        currentMovie.Notes = notes;
+        var data = await GetOrCreateUserDataAsync(id, userId);
+        data.Notes = notes;
         await _context.SaveChangesAsync();
 
-        var genresDto = currentMovie.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList();
-        var movieDto = new MovieDto(id, currentMovie.Title, currentMovie.Status, genresDto, currentMovie.Year, currentMovie.Rating, currentMovie.Notes);
-
-        return movieDto;
+        return ToDto(currentMovie, data);
     }
     
-    public async Task<MovieDto?> UpdateRatingAsync(int id, float rating)
+    public async Task<MovieDto?> UpdateRatingAsync(int id, int userId, float rating)
     {
         var currentMovie = await _context.Movies.Include(m => m.Genres).FirstOrDefaultAsync(m => m.Id == id);
 
-        if (currentMovie == null)
+        if (currentMovie == null || !await _context.Users.AnyAsync(u => u.Id == userId))
             return null;
 
         if (rating < 0 || rating > 10)
@@ -109,18 +117,36 @@ public class MovieService
             throw new InvalidRatingException("Rating must be between 0 and 10");
         }
 
-        currentMovie.Rating = rating;
+        var data = await GetOrCreateUserDataAsync(id, userId);
+        data.Rating = rating;
         await _context.SaveChangesAsync();
 
-        var genresDto = currentMovie.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList();
-        var movieDto = new MovieDto(id, currentMovie.Title, currentMovie.Status, genresDto, currentMovie.Year, currentMovie.Rating, currentMovie.Notes);
+        return ToDto(currentMovie, data);
+    }
 
-        return movieDto;
+    private async Task<UserMovieData> GetOrCreateUserDataAsync(int movieId, int userId)
+    {
+        var data = await _context.UserMovieData.FirstOrDefaultAsync(d => d.MovieId == movieId && d.UserId == userId);
+
+        if (data != null)
+            return data;
+
+        data = new UserMovieData(userId, movieId, Status.NotWatched);
+        _context.UserMovieData.Add(data);
+
+        return data;
+    }
+
+    private static MovieDto ToDto(Movie movie, UserMovieData data)
+    {
+        var genresDto = movie.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList();
+
+        return new MovieDto(movie.Id, movie.Title, genresDto, movie.Year, data.Rating, data.Status);
     }
 
     public async Task<MovieDto?> CreateMovieAsync(NewMovie newMovie)
     {
-        var movie = new Movie(newMovie.Title, newMovie.Status, newMovie.Year, newMovie.Notes);
+        var movie = new Movie(newMovie.Title, newMovie.Year);
 
         var currentGenres = new List<Genre>();
         
@@ -143,7 +169,7 @@ public class MovieService
         await _context.SaveChangesAsync();
 
         var genresDto = movie.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList();
-        var movieDto = new MovieDto(movie.Id, movie.Title, movie.Status, genresDto, movie.Year, movie.Rating, movie.Notes);
+        var movieDto = new MovieDto(movie.Id, movie.Title, genresDto, movie.Year, null, null);
         
         return movieDto;
     }

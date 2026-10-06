@@ -1,8 +1,9 @@
 using Extensions.Hosting.AsyncInitialization;
 using Microsoft.EntityFrameworkCore;
+using MovieTracker.Api.Initializer;
 using MovieTracker.Api.Models;
 
-namespace MovieTracker.Api.Data;
+namespace MovieTracker.Api.Seeders;
 
 public class GenresSeeder(MovieTrackerDbContext movieTrackerDbContext) : IAsyncInitializer
 {
