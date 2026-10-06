@@ -3,9 +3,14 @@ import './App.css'
 
 const API_URL = 'http://localhost:5066'
 
+// Временно: текущий пользователь зашит константой, пока нет авторизации (этап 4)
+const CURRENT_USER_ID = 1
+
+// Значения совпадают с enum Status на бэкенде
 enum MovieStatus {
-  Watched = 0,
-  NotWatched = 1,
+  NotWatched = 0,
+  Watching = 1,
+  Watched = 2,
 }
 
 interface Movie {
@@ -20,7 +25,7 @@ function App() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`${API_URL}/movies`)
+    fetch(`${API_URL}/movies?userId=${CURRENT_USER_ID}`)
       .then((res) => res.json())
       .then((data: Movie[]) => setMovies(data))
       .catch(() => setError('Не удалось загрузить список фильмов'))
@@ -34,7 +39,7 @@ function App() {
         : MovieStatus.Watched
 
     const response = await fetch(
-      `${API_URL}/movies/${movie.id}/status?status=${MovieStatus[newStatus]}`,
+      `${API_URL}/movies/${movie.id}/status?userId=${CURRENT_USER_ID}&status=${MovieStatus[newStatus]}`,
       { method: 'PATCH' },
     )
 
