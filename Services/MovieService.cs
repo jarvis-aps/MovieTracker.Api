@@ -52,22 +52,20 @@ public class MovieService
         if (movieQueryParameters.Status != null)
             query = query.Where(m => m.UserStatus == movieQueryParameters.Status);
 
-        switch (movieQueryParameters.SortBy)
+        var desc = movieQueryParameters.SortByDesc is true;
+
+        // Без sortBy (и для SortBy.Genre, пока это заглушка) — по названию
+        var ordered = movieQueryParameters.SortBy switch
         {
-            case SortBy.Title:
-                query = movieQueryParameters.SortByDesc is true ? query.OrderByDescending(m => m.Title) : query.OrderBy(m => m.Title);
-                break;
-            case SortBy.Status:
-                query = movieQueryParameters.SortByDesc is true ? query.OrderByDescending(m => m.UserStatus) : query.OrderBy(m => m.UserStatus);
-                break;
-            case SortBy.Rating:
-                // фильмы без оценки всегда в конце: пользователь мог начать смотреть, но ещё не оценить
-                query = movieQueryParameters.SortByDesc is true ? query.OrderBy(m => m.Rating == null).ThenByDescending(m => m.Rating) : query.OrderBy(m => m.Rating == null).ThenBy(m => m.Rating);
-                break;
-            case SortBy.Genre:
-            case null:
-                break;
-        }
+            SortBy.Status => desc ? query.OrderByDescending(m => m.UserStatus) : query.OrderBy(m => m.UserStatus),
+            // фильмы без оценки всегда в конце: пользователь мог начать смотреть, но ещё не оценить
+            SortBy.Rating => desc ? query.OrderBy(m => m.Rating == null).ThenByDescending(m => m.Rating) : query.OrderBy(m => m.Rating == null).ThenBy(m => m.Rating),
+            SortBy.Title => desc ? query.OrderByDescending(m => m.Title) : query.OrderBy(m => m.Title),
+            _ => query.OrderBy(m => m.Title)
+        };
+
+        // Title/Status/Rating не уникальны — без запасного ключа порядок внутри группы одинаковых значений случаен, страницы пересекаются
+        query = ordered.ThenBy(m => m.Id);
 
         query = query.Skip((int)((movieQueryParameters.Page - 1) * movieQueryParameters.PageSize)).Take((int)movieQueryParameters.PageSize);
 
