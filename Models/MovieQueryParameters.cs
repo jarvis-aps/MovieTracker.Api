@@ -1,6 +1,6 @@
 namespace MovieTracker.Api.Models;
 
-public class MovieQueryParameters(int userId, Status? status, int? genreId, SortBy? sortBy, bool? sortByDesc, int? page, int? pageSize, string? searchPart)
+public class MovieQueryParameters(int userId, Status? status, int? genreId, SortBy? sortBy, bool? sortByDesc, int? page, int? pageSize, string? searchPart, bool? inWatchlist)
 {
     public int UserId { get; set; } = userId;
     public Status? Status { get; set; } = status;
@@ -10,5 +10,6 @@ public class MovieQueryParameters(int userId, Status? status, int? genreId, Sort
     public int? Page { get; set; } = page;
     public int? PageSize { get; set; } = pageSize;
     public string? SearchPart { get; set; } = searchPart;
+    public bool? InWatchlist { get; set; } = inWatchlist;
 
 }

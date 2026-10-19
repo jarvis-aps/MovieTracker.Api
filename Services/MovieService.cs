@@ -46,11 +46,15 @@ public class MovieService
             m.Year,
             Genres = m.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList(),
             Rating = m.MoviesData.Where(d => d.UserId == userId).Select(d => d.Rating).FirstOrDefault(),
-            UserStatus = m.MoviesData.Where(d => d.UserId == userId).Select(d => (Status?)d.Status).FirstOrDefault() ?? Status.NotWatched
+            UserStatus = m.MoviesData.Where(d => d.UserId == userId).Select(d => (Status?)d.Status).FirstOrDefault() ?? Status.NotWatched,
+            InWatchlist = m.WatchlistItems.Any(w => w.UserId == userId)
         });
 
         if (movieQueryParameters.Status != null)
             query = query.Where(m => m.UserStatus == movieQueryParameters.Status);
+
+        if (movieQueryParameters.InWatchlist != null)
+            query = query.Where(m => m.InWatchlist == movieQueryParameters.InWatchlist);
 
         var desc = movieQueryParameters.SortByDesc is true;
 
@@ -71,7 +75,7 @@ public class MovieService
 
         var rows = await query.ToListAsync();
 
-        return rows.Select(m => new MovieDto(m.Id, m.Title, m.Genres, m.Year, m.Rating, m.UserStatus)).ToList();
+        return rows.Select(m => new MovieDto(m.Id, m.Title, m.Genres, m.Year, m.Rating, m.UserStatus, m.InWatchlist)).ToList();
     }
 
     public async Task<MovieDto?> UpdateStatusAsync(int id, int userId, Status status)
@@ -85,7 +89,7 @@ public class MovieService
         data.Status = status;
         await _context.SaveChangesAsync();
 
-        return ToDto(currentMovie, data);
+        return await ToDtoAsync(currentMovie, data);
     }
     
     public async Task<MovieDto?> UpdateNotesAsync(int id, int userId, string notes)
@@ -99,7 +103,7 @@ public class MovieService
         data.Notes = notes;
         await _context.SaveChangesAsync();
 
-        return ToDto(currentMovie, data);
+        return await ToDtoAsync(currentMovie, data);
     }
     
     public async Task<MovieDto?> UpdateRatingAsync(int id, int userId, float rating)
@@ -119,7 +123,7 @@ public class MovieService
         data.Rating = rating;
         await _context.SaveChangesAsync();
 
-        return ToDto(currentMovie, data);
+        return await ToDtoAsync(currentMovie, data);
     }
 
     private async Task<UserMovieData> GetOrCreateUserDataAsync(int movieId, int userId)
@@ -135,11 +139,12 @@ public class MovieService
         return data;
     }
 
-    private static MovieDto ToDto(Movie movie, UserMovieData data)
+    private async Task<MovieDto> ToDtoAsync(Movie movie, UserMovieData data)
     {
         var genresDto = movie.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList();
+        var inWatchlist = await _context.WatchlistItems.AnyAsync(w => w.UserId == data.UserId && w.MovieId == movie.Id);
 
-        return new MovieDto(movie.Id, movie.Title, genresDto, movie.Year, data.Rating, data.Status);
+        return new MovieDto(movie.Id, movie.Title, genresDto, movie.Year, data.Rating, data.Status, inWatchlist);
     }
 
     public async Task<MovieDto?> CreateMovieAsync(NewMovie newMovie)
@@ -167,7 +172,7 @@ public class MovieService
         await _context.SaveChangesAsync();
 
         var genresDto = movie.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList();
-        var movieDto = new MovieDto(movie.Id, movie.Title, genresDto, movie.Year, null, null);
+        var movieDto = new MovieDto(movie.Id, movie.Title, genresDto, movie.Year, null, null, false);
         
         return movieDto;
     }
