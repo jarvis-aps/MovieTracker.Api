@@ -23,6 +23,7 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddScoped<MovieService>();
+builder.Services.AddScoped<WatchlistService>();
 builder.Services.AddAsyncInitializer<GenresSeeder>();
 builder.Services.AddAsyncInitializer<MovieSeeder>();
 builder.Services.AddAsyncInitializer<UsersSeeder>();
@@ -103,6 +104,18 @@ app.MapPost("/movies", async (MovieService service, NewMovie newMovie) =>
 {
     var result = await service.CreateMovieAsync(newMovie);
     return result is null ? Results.BadRequest() : Results.Created($"/movies/{result.Id}", result);
+});
+
+app.MapPut("/watchlist/{movieId}", async (int movieId, int userId, WatchlistService service) =>
+{
+    var found = await service.AddAsync(movieId, userId);
+    return found ? Results.NoContent() : Results.NotFound();
+});
+
+app.MapDelete("/watchlist/{movieId}", async (int movieId, int userId, WatchlistService service) =>
+{
+    var found = await service.RemoveAsync(movieId, userId);
+    return found ? Results.NoContent() : Results.NotFound();
 });
 
 await app.InitAndRunAsync();
