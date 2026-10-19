@@ -5,5 +5,6 @@ public class User(string userName)
     public int Id { get; set; }
     public string UserName { get; set; } = userName;
     public List<UserMovieData> Movies { get; set; } = [];
+    public List<WatchlistItem> WatchlistItems { get; set; } = [];
 
 }

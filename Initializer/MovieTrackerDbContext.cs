@@ -9,6 +9,7 @@ public class MovieTrackerDbContext : DbContext
     public DbSet<Genre> Genres { get; set; }
     public DbSet<User> Users { get; set; }
     public DbSet<UserMovieData> UserMovieData { get; set; }
+    public DbSet<WatchlistItem> WatchlistItems { get; set; }
 
     public MovieTrackerDbContext(DbContextOptions<MovieTrackerDbContext> options) : base(options)
     {
@@ -19,6 +20,10 @@ public class MovieTrackerDbContext : DbContext
     {
         modelBuilder.Entity<UserMovieData>()
             .HasIndex(d => new { d.UserId, d.MovieId })
+            .IsUnique();
+
+        modelBuilder.Entity<WatchlistItem>()
+            .HasIndex(w => new { w.UserId, w.MovieId })
             .IsUnique();
     }
 }

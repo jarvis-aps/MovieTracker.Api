@@ -27,6 +27,7 @@ builder.Services.AddAsyncInitializer<GenresSeeder>();
 builder.Services.AddAsyncInitializer<MovieSeeder>();
 builder.Services.AddAsyncInitializer<UsersSeeder>();
 builder.Services.AddAsyncInitializer<UserMovieDataSeeder>();
+builder.Services.AddAsyncInitializer<WatchlistSeeder>();
 
 builder.Services.AddProblemDetails();
 

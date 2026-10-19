@@ -7,6 +7,7 @@ public class Movie
     public List<Genre> Genres { get; set; } = [];
     public string Title { get; set; }
     public List<UserMovieData> MoviesData { get; set; } = [];
+    public List<WatchlistItem> WatchlistItems { get; set; } = [];
     
     public Movie(string title, int year)
     {
