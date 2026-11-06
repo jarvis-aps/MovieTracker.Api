@@ -8,8 +8,35 @@ namespace MovieTracker.Api.Tests;
 [Collection(PostgresCollection.Name)]
 public class UserMovieDataServiceTests(PostgresFixture postgres)
 {
+    private const int ParallelCalls = 30;
+    private const int Rounds = 10;
+
     private static UserMovieDataService CreateService(TestDatabase db) =>
         new(db.NewContext(), NullLogger<UserMovieDataService>.Instance);
+
+    // Гонка первого PATCH (открытый вопрос 3.2). Половина вызовов ставит статус, половина — оценку: если проигравшему
+    // просто сказать «уже сделано» (как в watchlist), его изменение потеряется, и в записи не окажется статуса или оценки.
+    // Одного раунда мало — гонка срабатывает не каждый раз
+    [Fact]
+    public async Task Update_ParallelFirstCalls_AllSucceedAndNoChangeIsLost()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+
+        for (var round = 0; round < Rounds; round++)
+        {
+            var movieId = await db.AddMovieAsync($"Фильм {round}");
+
+            await Task.WhenAll(Enumerable.Range(0, ParallelCalls).Select(i => Task.Run(() => i % 2 == 0
+                ? CreateService(db).UpdateStatusAsync(movieId, userId, Status.Watched)
+                : CreateService(db).UpdateRatingAsync(movieId, userId, 7))));
+
+            Assert.Equal(1, await db.CountUserDataAsync(userId, movieId));
+            var saved = await db.GetUserDataAsync(userId, movieId);
+            Assert.Equal(Status.Watched, saved?.Status);
+            Assert.Equal(7, saved?.Rating);
+        }
+    }
 
     [Theory]
     [InlineData(-0.5f)]

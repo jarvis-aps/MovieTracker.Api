@@ -28,7 +28,9 @@ public class PostgresFixture : IAsyncLifetime
             await command.ExecuteNonQueryAsync();
         }
 
-        var connectionString = new NpgsqlConnectionStringBuilder(_container.GetConnectionString()) { Database = name }.ToString();
+        // Pooling=false: у каждого теста своя база, а значит свой пул, который держит соединения минутами. Пулы копились от теста
+        // к тесту и упирались в лимит Postgres (100): «53300 too many clients». Тестам пул ничего не даёт
+        var connectionString = new NpgsqlConnectionStringBuilder(_container.GetConnectionString()) { Database = name, Pooling = false }.ToString();
         var database = new TestDatabase(connectionString);
 
         await using var context = database.NewContext();
