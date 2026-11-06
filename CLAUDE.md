@@ -32,7 +32,15 @@ dotnet run                      # запуск (http://localhost:5066, https://l
 dotnet watch run                # запуск с hot reload
 ```
 
-Тестового проекта пока нет (юнит-тесты — этап 3, см. «Карту тем» в `PROJECT_BRIEF.md`).
+### Тесты
+
+`MovieTracker.Api.Tests` (xUnit + Testcontainers, задача 3.6): сервисы проверяются против настоящего Postgres 17, который тест сам поднимает в отдельном контейнере на случайном порту — `movietracker-db` и порт 5432 не затрагиваются. **OrbStack должен быть запущен** (включает пользователь, агент его не запускает).
+
+```bash
+dotnet test MovieTracker.Api.Tests    # весь набор, ~12 с вместе со сборкой
+```
+
+`.sln` нет намеренно: рядом с `.csproj` в корне он сломал бы `dotnet build` («в папке несколько файлов проекта»), поэтому тесты запускаются по пути проекта. Основной `.csproj` исключает подпапку тестов из своей компиляции (`DefaultItemExcludes`) — иначе плоская раскладка втянула бы её файлы в приложение.
 
 ### EF Core миграции
 
@@ -46,7 +54,7 @@ dotnet ef migrations remove         # откатить последнюю неп
 
 ### База данных
 
-PostgreSQL 17 в Docker-контейнере `movietracker-db` (порт 5432). Строка подключения — в `appsettings.Development.json` (ключ `ConnectionStrings:MovieTrackerDb`), пароль учебный/локальный.
+PostgreSQL 17 в контейнере `movietracker-db` (порт 5432). Контейнеры здесь работают под **OrbStack**, а не под Docker Desktop: команды `docker ...` те же (OrbStack Docker-совместим), но демоном служит OrbStack, и пользователь включает его сам — агент его не запускает (если демон недоступен, попросить включить). Строка подключения — в `appsettings.Development.json` (ключ `ConnectionStrings:MovieTrackerDb`), пароль учебный/локальный.
 
 ```bash
 docker exec -it movietracker-db psql -U movietracker -d movietracker
@@ -66,6 +74,7 @@ Services/             # MovieService — вся бизнес-логика, бе�
 Exceptions/           # кастомные исключения для доменной валидации (InvalidRatingException, InvalidPageSizeException)
 Migrations/           # генерируется EF Core, руками не редактировать
 client/               # React + TypeScript + Vite, отдельный фронтенд-проект
+MovieTracker.Api.Tests/  # xUnit + Testcontainers: тесты сервисов против Postgres в контейнере (3.6); отдельный проект, в компиляцию приложения не входит
 ```
 
 Namespace'ы соответствуют папкам (`MovieTracker.Api.Models`, `MovieTracker.Api.Initializer`, `MovieTracker.Api.Seeders`) — стандартная C#-конвенция, Rider иначе подсвечивает warning. Эндпоинты (`MapGet`/`MapPatch`/`MapPost`) остаются инлайн в `Bootstrap.cs`, **намеренно** не растащены на `Endpoints/`/`Controllers/` — это уже следующий уровень структуры, вводить его сейчас значило бы architecture без повода.

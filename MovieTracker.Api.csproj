@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Проект лежит плоско в корне: без исключения SDK подхватит .cs и .json тестового проекта (включая его obj/) в это приложение -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);MovieTracker.Api.Tests/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

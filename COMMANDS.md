@@ -10,6 +10,7 @@
 dotnet build                    # сборка
 dotnet run                      # запуск (http://localhost:5066, https://localhost:7131)
 dotnet watch run                # запуск с hot reload
+dotnet test MovieTracker.Api.Tests   # тесты (сами поднимают Postgres в контейнере — OrbStack должен быть включён)
 ```
 
 ## EF Core — обычный цикл: добавил/поменял модель
