@@ -5,7 +5,7 @@ using Npgsql;
 
 namespace MovieTracker.Api.Services;
 
-public class WatchlistService
+public class WatchlistService : IWatchlistReader
 {
     private readonly MovieTrackerDbContext _context;
     private readonly ILogger<WatchlistService> _logger;
@@ -52,5 +52,15 @@ public class WatchlistService
             .ExecuteDeleteAsync();
 
         return true;
+    }
+
+    public async Task<HashSet<int>> GetMovieIdsAsync(int userId)
+    {
+        var movieIds = await _context.WatchlistItems
+            .Where(w => w.UserId == userId)
+            .Select(w => w.MovieId)
+            .ToListAsync();
+
+        return movieIds.ToHashSet();
     }
 }

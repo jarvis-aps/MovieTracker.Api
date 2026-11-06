@@ -93,6 +93,12 @@ public class TestDatabase(string connectionString)
         await context.SaveChangesAsync();
     }
 
+    public async Task<UserMovieData?> GetUserDataAsync(int userId, int movieId)
+    {
+        await using var context = NewContext();
+        return await context.UserMovieData.AsNoTracking().FirstOrDefaultAsync(d => d.UserId == userId && d.MovieId == movieId);
+    }
+
     public async Task<int> CountWatchlistAsync(int userId, int movieId)
     {
         await using var context = NewContext();

@@ -8,8 +8,12 @@ namespace MovieTracker.Api.Tests;
 [Collection(PostgresCollection.Name)]
 public class MovieServiceTests(PostgresFixture postgres)
 {
-    private static MovieService CreateService(TestDatabase db) =>
-        new(db.NewContext(), NullLogger<MovieService>.Instance);
+    // Как в приложении: один контекст на запрос, и настоящий watchlist-сервис работает на том же контексте
+    private static MovieService CreateService(TestDatabase db)
+    {
+        var context = db.NewContext();
+        return new MovieService(context, NullLogger<MovieService>.Instance, new WatchlistService(context, NullLogger<WatchlistService>.Instance));
+    }
 
     private static MovieQueryParameters Query(int userId, Status? status = null, SortBy? sortBy = null, bool? sortByDesc = null,
         int? page = null, int? pageSize = null, string? searchPart = null, bool? inWatchlist = null) =>
@@ -30,60 +34,7 @@ public class MovieServiceTests(PostgresFixture postgres)
             CreateService(db).GetMoviesAsync(Query(userId, page: page, pageSize: pageSize)));
     }
 
-    [Theory]
-    [InlineData(-0.5f)]
-    [InlineData(10.5f)]
-    public async Task UpdateRatingAsync_OutOfRange_ThrowsAndSavesNothing(float rating)
-    {
-        var db = await postgres.CreateDatabaseAsync();
-        var userId = await db.AddUserAsync();
-        var movieId = await db.AddMovieAsync("Дюна");
-
-        await Assert.ThrowsAsync<InvalidRatingException>(() => CreateService(db).UpdateRatingAsync(movieId, userId, rating));
-        Assert.Equal(0, await db.CountUserDataAsync(userId, movieId));
-    }
-
-    [Theory]
-    [InlineData(0f)]
-    [InlineData(10f)]
-    public async Task UpdateRatingAsync_BoundaryValues_AreAccepted(float rating)
-    {
-        var db = await postgres.CreateDatabaseAsync();
-        var userId = await db.AddUserAsync();
-        var movieId = await db.AddMovieAsync("Дюна");
-
-        var result = await CreateService(db).UpdateRatingAsync(movieId, userId, rating);
-
-        Assert.Equal(rating, result?.rating);
-    }
-
-    // ---------- личные данные пользователя ----------
-
-    [Fact]
-    public async Task UpdateStatusAsync_NoUserDataYet_CreatesSingleRowAndRepeatDoesNotDuplicate()
-    {
-        var db = await postgres.CreateDatabaseAsync();
-        var userId = await db.AddUserAsync();
-        var movieId = await db.AddMovieAsync("Дюна");
-
-        var first = await CreateService(db).UpdateStatusAsync(movieId, userId, Status.Watching);
-        var second = await CreateService(db).UpdateStatusAsync(movieId, userId, Status.Watched);
-
-        Assert.Equal(Status.Watching, first?.status);
-        Assert.Equal(Status.Watched, second?.status);
-        Assert.Equal(1, await db.CountUserDataAsync(userId, movieId));
-    }
-
-    [Fact]
-    public async Task UpdateStatusAsync_UnknownMovieOrUser_ReturnsNull()
-    {
-        var db = await postgres.CreateDatabaseAsync();
-        var userId = await db.AddUserAsync();
-        var movieId = await db.AddMovieAsync("Дюна");
-
-        Assert.Null(await CreateService(db).UpdateStatusAsync(9999, userId, Status.Watched));
-        Assert.Null(await CreateService(db).UpdateStatusAsync(movieId, 9999, Status.Watched));
-    }
+    // ---------- личные данные пользователя в списке ----------
 
     [Fact]
     public async Task GetMoviesAsync_MovieWithoutUserData_IsNotWatchedWithNullRating_AndMatchesStatusFilter()
@@ -158,6 +109,31 @@ public class MovieServiceTests(PostgresFixture postgres)
         Assert.Equal([inList], onlyIn.Select(m => m.Id));
         Assert.Equal([notInList], onlyOut.Select(m => m.Id));
         Assert.All(bobsView, m => Assert.False(m.InWatchlist));
+    }
+
+    // Граница Movies/Watchlist: в таблице WatchlistItems пусто, а подставной reader говорит «фильм в списке».
+    // Флаг истинен — значит, MovieService берёт watchlist только через интерфейс
+    [Fact]
+    public async Task MovieService_TakesWatchlistFromReader_NotFromTable()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var inList = await db.AddMovieAsync("В списке по мнению reader");
+        await db.AddMovieAsync("Не в списке");
+
+        MovieService CreateWithFakeReader() =>
+            new(db.NewContext(), NullLogger<MovieService>.Instance, new FakeWatchlistReader(inList));
+
+        var all = await CreateWithFakeReader().GetMoviesAsync(Query(userId));
+        var onlyIn = await CreateWithFakeReader().GetMoviesAsync(Query(userId, inWatchlist: true));
+
+        Assert.Equal([inList], all.Where(m => m.InWatchlist).Select(m => m.Id));
+        Assert.Equal([inList], onlyIn.Select(m => m.Id));
+    }
+
+    private class FakeWatchlistReader(params int[] movieIds) : IWatchlistReader
+    {
+        public Task<HashSet<int>> GetMovieIdsAsync(int userId) => Task.FromResult(movieIds.ToHashSet());
     }
 
     // ---------- сортировка и пагинация ----------

@@ -10,11 +10,13 @@ public class MovieService
 {
     private readonly MovieTrackerDbContext _context;
     private readonly ILogger<MovieService> _logger;
+    private readonly IWatchlistReader _watchlist;
 
-    public MovieService(MovieTrackerDbContext context, ILogger<MovieService> logger)
+    public MovieService(MovieTrackerDbContext context, ILogger<MovieService> logger, IWatchlistReader watchlist)
     {
         _context = context;
         _logger= logger;
+        _watchlist = watchlist;
     }
 
     public async Task<List<MovieDto>> GetMoviesAsync(MovieQueryParameters movieQueryParameters)
@@ -38,6 +40,10 @@ public class MovieService
 
         var userId = movieQueryParameters.UserId;
 
+        // Watchlist — чужой модуль: его таблицу не читаем, берём только id фильмов и отдаём их в тот же SQL (= ANY(@ids)),
+        // поэтому фильтр и флаг по-прежнему считаются в одном запросе, до Skip/Take
+        var watchlistMovieIds = await _watchlist.GetMovieIdsAsync(userId);
+
         // LEFT JOIN на данные пользователя: фильм без записи UserMovieData остаётся в списке как NotWatched без оценки
         var query = movies.Select(m => new
         {
@@ -47,7 +53,7 @@ public class MovieService
             Genres = m.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList(),
             Rating = m.MoviesData.Where(d => d.UserId == userId).Select(d => d.Rating).FirstOrDefault(),
             UserStatus = m.MoviesData.Where(d => d.UserId == userId).Select(d => (Status?)d.Status).FirstOrDefault() ?? Status.NotWatched,
-            InWatchlist = m.WatchlistItems.Any(w => w.UserId == userId)
+            InWatchlist = watchlistMovieIds.Contains(m.Id)
         });
 
         if (movieQueryParameters.Status != null)
@@ -76,75 +82,6 @@ public class MovieService
         var rows = await query.ToListAsync();
 
         return rows.Select(m => new MovieDto(m.Id, m.Title, m.Genres, m.Year, m.Rating, m.UserStatus, m.InWatchlist)).ToList();
-    }
-
-    public async Task<MovieDto?> UpdateStatusAsync(int id, int userId, Status status)
-    {
-        var currentMovie = await _context.Movies.Include(m => m.Genres).FirstOrDefaultAsync(m => m.Id == id);
-
-        if (currentMovie == null || !await _context.Users.AnyAsync(u => u.Id == userId))
-            return null;
-
-        var data = await GetOrCreateUserDataAsync(id, userId);
-        data.Status = status;
-        await _context.SaveChangesAsync();
-
-        return await ToDtoAsync(currentMovie, data);
-    }
-    
-    public async Task<MovieDto?> UpdateNotesAsync(int id, int userId, string notes)
-    {
-        var currentMovie = await _context.Movies.Include(m => m.Genres).FirstOrDefaultAsync(m => m.Id == id);
-
-        if (currentMovie == null || !await _context.Users.AnyAsync(u => u.Id == userId))
-            return null;
-
-        var data = await GetOrCreateUserDataAsync(id, userId);
-        data.Notes = notes;
-        await _context.SaveChangesAsync();
-
-        return await ToDtoAsync(currentMovie, data);
-    }
-    
-    public async Task<MovieDto?> UpdateRatingAsync(int id, int userId, float rating)
-    {
-        var currentMovie = await _context.Movies.Include(m => m.Genres).FirstOrDefaultAsync(m => m.Id == id);
-
-        if (currentMovie == null || !await _context.Users.AnyAsync(u => u.Id == userId))
-            return null;
-
-        if (rating < 0 || rating > 10)
-        {
-            _logger.LogWarning("For ID {0}, rating {1} not valid", id, rating);
-            throw new InvalidRatingException("Rating must be between 0 and 10");
-        }
-
-        var data = await GetOrCreateUserDataAsync(id, userId);
-        data.Rating = rating;
-        await _context.SaveChangesAsync();
-
-        return await ToDtoAsync(currentMovie, data);
-    }
-
-    private async Task<UserMovieData> GetOrCreateUserDataAsync(int movieId, int userId)
-    {
-        var data = await _context.UserMovieData.FirstOrDefaultAsync(d => d.MovieId == movieId && d.UserId == userId);
-
-        if (data != null)
-            return data;
-
-        data = new UserMovieData(userId, movieId, Status.NotWatched);
-        _context.UserMovieData.Add(data);
-
-        return data;
-    }
-
-    private async Task<MovieDto> ToDtoAsync(Movie movie, UserMovieData data)
-    {
-        var genresDto = movie.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList();
-        var inWatchlist = await _context.WatchlistItems.AnyAsync(w => w.UserId == data.UserId && w.MovieId == movie.Id);
-
-        return new MovieDto(movie.Id, movie.Title, genresDto, movie.Year, data.Rating, data.Status, inWatchlist);
     }
 
     public async Task<MovieDto?> CreateMovieAsync(NewMovie newMovie)

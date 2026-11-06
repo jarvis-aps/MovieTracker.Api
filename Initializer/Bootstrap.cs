@@ -23,7 +23,10 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddScoped<MovieService>();
+builder.Services.AddScoped<UserMovieDataService>();
 builder.Services.AddScoped<WatchlistService>();
+// MovieService получает watchlist только через интерфейс; пересылка на тот же WatchlistService, чтобы на запрос был один экземпляр
+builder.Services.AddScoped<IWatchlistReader>(services => services.GetRequiredService<WatchlistService>());
 builder.Services.AddAsyncInitializer<GenresSeeder>();
 builder.Services.AddAsyncInitializer<MovieSeeder>();
 builder.Services.AddAsyncInitializer<UsersSeeder>();
@@ -72,21 +75,21 @@ app.MapGet("/movies", async (MovieService service, [AsParameters]MovieQueryParam
     return Results.Ok(result);
 });
 
-app.MapPatch("/movies/{id}/status", async (int id, int userId, Status status, MovieService service) =>
+app.MapPatch("/movies/{id}/status", async (int id, int userId, Status status, UserMovieDataService service) =>
 {
     var result = await service.UpdateStatusAsync(id, userId, status);
     return result is null ? Results.NotFound() : Results.Ok(result);
 });
 
-app.MapPatch("/movies/{id}/notes", async (int id, int userId, string notes, MovieService service) =>
+app.MapPatch("/movies/{id}/notes", async (int id, int userId, string notes, UserMovieDataService service) =>
 {
     var result = await service.UpdateNotesAsync(id, userId, notes);
     return result is null ? Results.NotFound() : Results.Ok(result);
 });
 
-app.MapPatch("/movies/{id}/rating", async (int id, int userId, float rating, MovieService service) =>
+app.MapPatch("/movies/{id}/rating", async (int id, int userId, float rating, UserMovieDataService service) =>
 {
-    MovieDto? result;
+    UserMovieDataDto? result;
     
     try
     {

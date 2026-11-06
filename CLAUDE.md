@@ -70,7 +70,7 @@ docker exec -it movietracker-db psql -U movietracker -d movietracker
 Initializer/         # Bootstrap.cs (бывший Program.cs, переименован и перенесён пользователем в задаче 3.2 — "всё для запуска приложения в одном месте") — точка входа + все Minimal API endpoints инлайн, без Main-класса; MovieTrackerDbContext.cs — DbContext, лежит здесь же по той же идее, не в отдельной Data/
 Models/               # сущности (Movie, Genre, User, UserMovieData), enum'ы (Status, SortBy), DTO (MovieDto, GenreDto, NewMovie), MovieQueryParameters
 Seeders/              # GenresSeeder, MovieSeeder, UsersSeeder, UserMovieDataSeeder — все IAsyncInitializer; порядок регистрации в Bootstrap.cs важен — каждый следующий зависит по FK от данных предыдущих
-Services/             # MovieService — вся бизнес-логика, без HTTP-семантики
+Services/             # MovieService (каталог и список), WatchlistService, UserMovieDataService (запись статуса/оценки/заметок, 3.8) — бизнес-логика, без HTTP-семантики; IWatchlistReader — единственный способ для MovieService узнать про watchlist (таблицу WatchlistItems он напрямую не читает, 3.7); личные данные для списка MovieService пока читает сам (m.MoviesData) — чтение отдельной задачей
 Exceptions/           # кастомные исключения для доменной валидации (InvalidRatingException, InvalidPageSizeException)
 Migrations/           # генерируется EF Core, руками не редактировать
 client/               # React + TypeScript + Vite, отдельный фронтенд-проект
