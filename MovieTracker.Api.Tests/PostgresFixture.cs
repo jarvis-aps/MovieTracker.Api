@@ -2,41 +2,58 @@ using Microsoft.EntityFrameworkCore;
 using MovieTracker.Api.Initializer;
 using MovieTracker.Api.Models;
 using Npgsql;
+using Respawn;
+using Respawn.Graph;
 using Testcontainers.PostgreSql;
 
 namespace MovieTracker.Api.Tests;
 
-// Один контейнер Postgres на весь прогон тестов (запуск контейнера — секунды, на каждый тест это было бы слишком долго)
+// Один контейнер Postgres и одна база на весь прогон тестов: запуск контейнера и миграции — секунды, на каждый тест это было бы слишком долго.
+// Тесты не влияют друг на друга за счёт того, что Respawn очищает таблицы перед каждым тестом
 public class PostgresFixture : IAsyncLifetime
 {
     // Та же мажорная версия, что у боевого movietracker-db
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17").Build();
 
-    public Task InitializeAsync() => _container.StartAsync();
+    private TestDatabase _database = null!;
+    private Respawner _respawner = null!;
+
+    public async Task InitializeAsync()
+    {
+        await _container.StartAsync();
+
+        // Пул соединений оставлен по умолчанию: база одна, значит и пул один (раньше у каждого теста была своя база и свой пул,
+        // пулы копились и упирались в лимит Postgres: «53300 too many clients»)
+        _database = new TestDatabase(_container.GetConnectionString());
+
+        await using (var context = _database.NewContext())
+            await context.Database.MigrateAsync();
+
+        // Respawn один раз читает схему и строит команду очистки: truncate всех таблиц схемы с cascade (проверено по Respawner.DeleteSql).
+        // История миграций — не данные теста, на неё нет внешних ключей, поэтому её можно исключить. Исключать таблицу, которая ссылается
+        // на очищаемые (например, UserMovieData), бесполезно: cascade всё равно очистит её вместе с родителями
+        await using var connection = new NpgsqlConnection(_container.GetConnectionString());
+        await connection.OpenAsync();
+
+        _respawner = await Respawner.CreateAsync(connection, new RespawnerOptions
+        {
+            DbAdapter = DbAdapter.Postgres,
+            SchemasToInclude = ["public"],
+            TablesToIgnore = [new Table("__EFMigrationsHistory")]
+        });
+    }
 
     public Task DisposeAsync() => _container.DisposeAsync().AsTask();
 
-    // Новая пустая база с применёнными миграциями — у каждого теста своя, поэтому тесты не влияют друг на друга
+    // Очищает все таблицы (схема остаётся) и отдаёт ту же базу: каждый тест начинает с пустых таблиц.
+    // Тесты одной коллекции идут по очереди, поэтому очистка не может задеть работающий тест
     public async Task<TestDatabase> CreateDatabaseAsync()
     {
-        var name = $"test_{Guid.NewGuid():N}";
+        await using var connection = new NpgsqlConnection(_container.GetConnectionString());
+        await connection.OpenAsync();
+        await _respawner.ResetAsync(connection);
 
-        await using (var admin = new NpgsqlConnection(_container.GetConnectionString()))
-        {
-            await admin.OpenAsync();
-            await using var command = new NpgsqlCommand($"CREATE DATABASE \"{name}\"", admin);
-            await command.ExecuteNonQueryAsync();
-        }
-
-        // Pooling=false: у каждого теста своя база, а значит свой пул, который держит соединения минутами. Пулы копились от теста
-        // к тесту и упирались в лимит Postgres (100): «53300 too many clients». Тестам пул ничего не даёт
-        var connectionString = new NpgsqlConnectionStringBuilder(_container.GetConnectionString()) { Database = name, Pooling = false }.ToString();
-        var database = new TestDatabase(connectionString);
-
-        await using var context = database.NewContext();
-        await context.Database.MigrateAsync();
-
-        return database;
+        return _database;
     }
 }
 
