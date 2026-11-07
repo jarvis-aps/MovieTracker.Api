@@ -53,7 +53,8 @@ public class MovieService
             Genres = m.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList(),
             Rating = m.MoviesData.Where(d => d.UserId == userId).Select(d => d.Rating).FirstOrDefault(),
             UserStatus = m.MoviesData.Where(d => d.UserId == userId).Select(d => (Status?)d.Status).FirstOrDefault() ?? Status.NotWatched,
-            InWatchlist = watchlistMovieIds.Contains(m.Id)
+            InWatchlist = watchlistMovieIds.Contains(m.Id),
+            Notes = m.MoviesData.Where(d => d.UserId == userId).Select(d => d.Notes).FirstOrDefault()
         });
 
         if (movieQueryParameters.Status != null)
@@ -81,7 +82,7 @@ public class MovieService
 
         var rows = await query.ToListAsync();
 
-        return rows.Select(m => new MovieDto(m.Id, m.Title, m.Genres, m.Year, m.Rating, m.UserStatus, m.InWatchlist)).ToList();
+        return rows.Select(m => new MovieDto(m.Id, m.Title, m.Genres, m.Year, m.Rating, m.UserStatus, m.InWatchlist, m.Notes)).ToList();
     }
 
     public async Task<MovieDto?> CreateMovieAsync(NewMovie newMovie)
@@ -109,7 +110,7 @@ public class MovieService
         await _context.SaveChangesAsync();
 
         var genresDto = movie.Genres.Select(genre => new GenreDto(genre.Id, genre.Name)).ToList();
-        var movieDto = new MovieDto(movie.Id, movie.Title, genresDto, movie.Year, null, null, false);
+        var movieDto = new MovieDto(movie.Id, movie.Title, genresDto, movie.Year, null, null, false, null);
         
         return movieDto;
     }

@@ -81,10 +81,10 @@ public class TestDatabase(string connectionString)
         return movies.Select(m => m.Id).ToList();
     }
 
-    public async Task AddUserDataAsync(int userId, int movieId, Status status, float? rating = null)
+    public async Task AddUserDataAsync(int userId, int movieId, Status status, float? rating = null, string? notes = null)
     {
         await using var context = NewContext();
-        context.UserMovieData.Add(new UserMovieData(userId, movieId, status) { Rating = rating });
+        context.UserMovieData.Add(new UserMovieData(userId, movieId, status) { Rating = rating, Notes = notes });
         await context.SaveChangesAsync();
     }
 

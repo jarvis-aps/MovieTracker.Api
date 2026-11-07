@@ -97,5 +97,5 @@ public class UserMovieDataService
         return data;
     }
 
-    private static UserMovieDataDto ToDto(UserMovieData data) => new(data.MovieId, data.Status, data.Rating);
+    private static UserMovieDataDto ToDto(UserMovieData data) => new(data.MovieId, data.Status, data.Rating, data.Notes);
 }

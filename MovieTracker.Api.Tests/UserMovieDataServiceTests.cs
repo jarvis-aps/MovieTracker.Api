@@ -62,7 +62,7 @@ public class UserMovieDataServiceTests(PostgresFixture postgres)
 
         var result = await CreateService(db).UpdateRatingAsync(movieId, userId, rating);
 
-        Assert.Equal(new UserMovieDataDto(movieId, Status.NotWatched, rating), result);
+        Assert.Equal(new UserMovieDataDto(movieId, Status.NotWatched, rating, null), result);
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class UserMovieDataServiceTests(PostgresFixture postgres)
 
         var result = await CreateService(db).UpdateNotesAsync(movieId, userId, "посмотреть с друзьями");
 
-        Assert.Equal(new UserMovieDataDto(movieId, Status.NotWatched, null), result);
+        Assert.Equal(new UserMovieDataDto(movieId, Status.NotWatched, null, "посмотреть с друзьями"), result);
         var saved = await db.GetUserDataAsync(userId, movieId);
         Assert.Equal("посмотреть с друзьями", saved?.Notes);
     }
@@ -105,7 +105,23 @@ public class UserMovieDataServiceTests(PostgresFixture postgres)
 
         var result = await CreateService(db).UpdateNotesAsync(movieId, userId, "заметка");
 
-        Assert.Equal(new UserMovieDataDto(movieId, Status.Watched, 8), result);
+        Assert.Equal(new UserMovieDataDto(movieId, Status.Watched, 8, "заметка"), result);
+    }
+
+    // Ответ PATCH status/rating показывает заметку, записанную раньше: DTO общий для трёх PATCH
+    [Fact]
+    public async Task UpdateStatusAndRating_ResponseContainsExistingNotes()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var movieId = await db.AddMovieAsync("Дюна");
+        await db.AddUserDataAsync(userId, movieId, Status.NotWatched, notes: "посмотреть с друзьями");
+
+        var afterStatus = await CreateService(db).UpdateStatusAsync(movieId, userId, Status.Watched);
+        var afterRating = await CreateService(db).UpdateRatingAsync(movieId, userId, 8);
+
+        Assert.Equal("посмотреть с друзьями", afterStatus?.Notes);
+        Assert.Equal("посмотреть с друзьями", afterRating?.Notes);
     }
 
     [Fact]
@@ -119,7 +135,7 @@ public class UserMovieDataServiceTests(PostgresFixture postgres)
 
         var bobsResult = await CreateService(db).UpdateStatusAsync(movieId, bob, Status.Watching);
 
-        Assert.Equal(new UserMovieDataDto(movieId, Status.Watching, null), bobsResult);
+        Assert.Equal(new UserMovieDataDto(movieId, Status.Watching, null, null), bobsResult);
         var alicesRecord = await db.GetUserDataAsync(alice, movieId);
         Assert.Equal(Status.Watched, alicesRecord?.Status);
         Assert.Equal(9, alicesRecord?.Rating);

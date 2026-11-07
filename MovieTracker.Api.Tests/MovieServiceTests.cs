@@ -71,6 +71,28 @@ public class MovieServiceTests(PostgresFixture postgres)
         Assert.Null(bobsView.rating);
     }
 
+    // Заметка в списке (3.10): своя видна, чужая нет, без записи — null. Заметки у обоих пользователей на одном фильме
+    // и разные: без условия UserId в подзапросе список отдал бы заметку первой попавшейся записи
+    [Fact]
+    public async Task GetMoviesAsync_Notes_AreShownPerUser()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var alice = await db.AddUserAsync("alice");
+        var bob = await db.AddUserAsync("bob");
+        var carol = await db.AddUserAsync("carol");
+        var movieId = await db.AddMovieAsync("Дюна");
+        await db.AddUserDataAsync(alice, movieId, Status.Watched, notes: "заметка Алисы");
+        await db.AddUserDataAsync(bob, movieId, Status.Watching, notes: "заметка Боба");
+
+        var alicesView = Assert.Single(await CreateService(db).GetMoviesAsync(Query(alice)));
+        var bobsView = Assert.Single(await CreateService(db).GetMoviesAsync(Query(bob)));
+        var carolsView = Assert.Single(await CreateService(db).GetMoviesAsync(Query(carol)));
+
+        Assert.Equal("заметка Алисы", alicesView.Notes);
+        Assert.Equal("заметка Боба", bobsView.Notes);
+        Assert.Null(carolsView.Notes);
+    }
+
     // ---------- поиск и watchlist-фильтр ----------
 
     // ILike — функция Npgsql: на InMemory/SQLite этот тест невозможен, поэтому тесты идут против настоящего Postgres
