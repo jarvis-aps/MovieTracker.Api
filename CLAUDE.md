@@ -72,6 +72,8 @@ Models/               # сущности (Movie, Genre, User, UserMovieData), en
 Seeders/              # GenresSeeder, MovieSeeder, UsersSeeder, UserMovieDataSeeder — все IAsyncInitializer; порядок регистрации в Bootstrap.cs важен — каждый следующий зависит по FK от данных предыдущих
 Services/             # MovieService (каталог и список), WatchlistService, UserMovieDataService (запись статуса/оценки/заметок, 3.8) — бизнес-логика, без HTTP-семантики; IWatchlistReader — единственный способ для MovieService узнать про watchlist (таблицу WatchlistItems он напрямую не читает, 3.7); личные данные для списка MovieService пока читает сам (m.MoviesData) — чтение отдельной задачей
 Exceptions/           # кастомные исключения для доменной валидации (InvalidRatingException, InvalidPageSizeException, InvalidNotesException)
+Mediator/             # свой мини-mediator (3.14, не MediatR): IMediator/DefaultMediator, IRequest, IRequestHandler, IPipelineBehavior, TimingBehavior (замер времени), AddMediator (сканирует сборку на handler'ы)
+Commands/             # команды CQRS и их handler'ы (SetStatusCommand/SetStatusHandler, 3.14); handler пока тонкий и зовёт UserMovieDataService: когда командами станут статус, оценка и заметка, логика переедет в handler'ы, сервис удалить (обязательное продолжение, см. PROJECT_BRIEF.md). Queries/ появится с задачей 3.15
 Migrations/           # генерируется EF Core, руками не редактировать
 client/               # React + TypeScript + Vite, отдельный фронтенд-проект
 MovieTracker.Api.Tests/  # xUnit + Testcontainers: тесты сервисов против Postgres в контейнере (3.6); отдельный проект, в компиляцию приложения не входит
@@ -79,7 +81,7 @@ MovieTracker.Api.Tests/  # xUnit + Testcontainers: тесты сервисов �
 
 Namespace'ы соответствуют папкам (`MovieTracker.Api.Models`, `MovieTracker.Api.Initializer`, `MovieTracker.Api.Seeders`) — стандартная C#-конвенция, Rider иначе подсвечивает warning. Эндпоинты (`MapGet`/`MapPatch`/`MapPost`) остаются инлайн в `Bootstrap.cs`, **намеренно** не растащены на `Endpoints/`/`Controllers/` — это уже следующий уровень структуры, вводить его сейчас значило бы architecture без повода.
 
-Архитектура **осознанно не вводится заранее** — это прямое правило проекта («Философия проекта» в `PROJECT_BRIEF.md`): слои, CQRS, mediator-паттерн, модульность появляются только с реальным поводом (вторая сущность, вторая связь, реальная бизнес-логика), а не потому что «так принято». Не предлагай и не добавляй эти слои преждевременно, даже если это выглядит как «best practice» — на этапе 1 это осознанный анти-паттерн для целей проекта.
+Архитектура **осознанно не вводится заранее** — это прямое правило проекта («Философия проекта» в `PROJECT_BRIEF.md`): слои, CQRS, mediator-паттерн, модульность появляются только с реальным поводом (вторая сущность, вторая связь, реальная бизнес-логика), а не потому что «так принято». Не предлагай и не добавляй эти слои преждевременно, даже если это выглядит как «best practice» — на этапе 1 это осознанный анти-паттерн для целей проекта. **Исключение с этапа 3 (решение пользователя 2026-11-10):** CQRS, mediator и события вводятся осознанно «для наглядности», даже без повода по нагрузке; не возражай «повода нет», объясняй цену и риск приёма (подробности в «Философии проекта» в `PROJECT_BRIEF.md`).
 
 Плановая траектория усложнения (полная таблица — в `PROJECT_BRIEF.md`, раздел «Дорожная карта»):
 

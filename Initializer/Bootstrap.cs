@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using MovieTracker.Api.Seeders;
+using MovieTracker.Api.Commands;
 using MovieTracker.Api.Exceptions;
 using MovieTracker.Api.Initializer;
+using MovieTracker.Api.Mediator;
 using MovieTracker.Api.Models;
 using MovieTracker.Api.Services;
 
@@ -27,6 +29,8 @@ builder.Services.AddScoped<UserMovieDataService>();
 builder.Services.AddScoped<WatchlistService>();
 // MovieService получает watchlist только через интерфейс; пересылка на тот же WatchlistService, чтобы на запрос был один экземпляр
 builder.Services.AddScoped<IWatchlistReader>(services => services.GetRequiredService<WatchlistService>());
+// Mediator, handler'ы команд и запросов (по сборке) и сквозные поведения вокруг них (замер времени)
+builder.Services.AddMediator(typeof(Program).Assembly);
 builder.Services.AddAsyncInitializer<GenresSeeder>();
 builder.Services.AddAsyncInitializer<MovieSeeder>();
 builder.Services.AddAsyncInitializer<UsersSeeder>();
@@ -92,9 +96,9 @@ app.MapGet("/movies", async (MovieService service, [AsParameters]MovieQueryParam
 // Что делает: ставит пользователю статус фильма (NotWatched, Watching, Watched). Если личной записи ещё нет — создаёт её.
 // Что отдаёт: 200 и личную запись UserMovieDataDto (movieId, статус, оценка, заметка) без данных каталога.
 //   404 — нет такого фильма или пользователя; 400 — статус не из списка.
-app.MapPatch("/movies/{id}/status", async (int id, int userId, Status status, UserMovieDataService service) =>
+app.MapPatch("/movies/{id}/status", async (int id, int userId, Status status, IMediator mediator) =>
 {
-    var result = await service.UpdateStatusAsync(id, userId, status);
+    var result = await mediator.Send(new SetStatusCommand(id, userId, status));
     return result is null ? Results.NotFound() : Results.Ok(result);
 });
 
