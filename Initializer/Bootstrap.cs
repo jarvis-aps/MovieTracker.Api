@@ -68,13 +68,14 @@ app.UseCors();
 // Что делает: отдаёт страницу каталога фильмов в личном виде пользователя userId.
 //   Фильтры: status, genreId, searchPart (часть названия, без учёта регистра), inWatchlist.
 //   Сортировка: sortBy (Title, Status, Rating; Genre — заглушка, сортирует как Title) и sortByDesc.
-//   Страницы: page и pageSize (по умолчанию 1 и 10).
-// Что отдаёт: 200 и список MovieDto (id, название, жанры, год, оценка, статус, inWatchlist, заметка); пустой результат — тоже 200 с [].
+//   Страницы: page и pageSize (по умолчанию 1 и 100). pageSize больше 100 заменяется на 100, ошибки нет. Верхней границы у page нет.
+// Что отдаёт: 200 и объект { items, totalCount }. items — страница MovieDto (id, название, жанры, год, оценка, статус, inWatchlist, заметка),
+//   totalCount — сколько всего фильмов под теми же фильтрами (без учёта page/pageSize). Страница за последней — тоже 200: items пустой, totalCount настоящий.
 //   Фильм без личной записи приходит как NotWatched без оценки и заметки. 400 — page или pageSize <= 0.
 app.MapGet("/movies", async (MovieService service, [AsParameters]MovieQueryParameters movieQueryParameters) =>
 {
-    List<MovieDto> result;
-    
+    MoviesPage result;
+
     try
     {
         result = await service.GetMoviesAsync(movieQueryParameters);
@@ -99,10 +100,21 @@ app.MapPatch("/movies/{id}/status", async (int id, int userId, Status status, Us
 
 // PATCH /movies/{id}/notes?userId=1&notes=текст
 // Что делает: записывает пользователю заметку к фильму, заменяя прежнюю. Если личной записи ещё нет — создаёт её со статусом NotWatched.
-// Что отдаёт: 200 и личную запись UserMovieDataDto (с заметкой); 404 — нет такого фильма или пользователя.
+// Что отдаёт: 200 и личную запись UserMovieDataDto (с заметкой); 404 — нет такого фильма или пользователя;
+//   400 — заметка длиннее 500 символов (текст ошибки в теле, заметка не обрезается и не сохраняется).
 app.MapPatch("/movies/{id}/notes", async (int id, int userId, string notes, UserMovieDataService service) =>
 {
-    var result = await service.UpdateNotesAsync(id, userId, notes);
+    UserMovieDataDto? result;
+
+    try
+    {
+        result = await service.UpdateNotesAsync(id, userId, notes);
+    }
+    catch (InvalidNotesException exception)
+    {
+        return Results.BadRequest(exception.ErrorMessage);
+    }
+
     return result is null ? Results.NotFound() : Results.Ok(result);
 });
 

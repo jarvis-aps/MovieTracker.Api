@@ -65,6 +65,46 @@ public class UserMovieDataServiceTests(PostgresFixture postgres)
         Assert.Equal(new UserMovieDataDto(movieId, Status.NotWatched, rating, null), result);
     }
 
+    // Решение 3.12: заметка до 500 символов включительно
+    [Fact]
+    public async Task UpdateNotesAsync_ExactlyMaxLength_IsAccepted()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var movieId = await db.AddMovieAsync("Дюна");
+        var notes = new string('я', 500);
+
+        var result = await CreateService(db).UpdateNotesAsync(movieId, userId, notes);
+
+        Assert.Equal(notes, result?.Notes);
+        Assert.Equal(notes, (await db.GetUserDataAsync(userId, movieId))?.Notes);
+    }
+
+    [Fact]
+    public async Task UpdateNotesAsync_OverMaxLength_ThrowsAndSavesNothing()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var movieId = await db.AddMovieAsync("Дюна");
+
+        await Assert.ThrowsAsync<InvalidNotesException>(() => CreateService(db).UpdateNotesAsync(movieId, userId, new string('я', 501)));
+        Assert.Equal(0, await db.CountUserDataAsync(userId, movieId));
+    }
+
+    // Слишком длинную заметку не обрезаем и не пишем частично: прежняя остаётся как была
+    [Fact]
+    public async Task UpdateNotesAsync_OverMaxLength_KeepsPreviousNotes()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var movieId = await db.AddMovieAsync("Дюна");
+        await db.AddUserDataAsync(userId, movieId, Status.NotWatched, notes: "прежняя заметка");
+
+        await Assert.ThrowsAsync<InvalidNotesException>(() => CreateService(db).UpdateNotesAsync(movieId, userId, new string('я', 501)));
+
+        Assert.Equal("прежняя заметка", (await db.GetUserDataAsync(userId, movieId))?.Notes);
+    }
+
     [Fact]
     public async Task UpdateStatusAsync_NoUserDataYet_CreatesSingleRowAndRepeatDoesNotDuplicate()
     {

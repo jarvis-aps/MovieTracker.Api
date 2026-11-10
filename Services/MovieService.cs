@@ -19,17 +19,32 @@ public class MovieService
         _watchlist = watchlist;
     }
 
-    public async Task<List<MovieDto>> GetMoviesAsync(MovieQueryParameters movieQueryParameters)
+    // Решение 3.12 (числа пересмотрены в 3.13): за один запрос больше MaxPageSize фильмов не отдаём, иначе ответ (с заметками)
+    // растёт без границы. Если клиент просит больше, ошибки нет: страница будет размера по умолчанию
+    private const int DefaultPageSize = 100;
+    private const int MaxPageSize = 100;
+
+    // Решение 3.13: у номера страницы нет своей границы, её задаёт число фильмов (totalCount). Страница за последней — пустой
+    // список и честный totalCount, без запроса в базу. Смещение считается в long: в int (page - 1) * pageSize переполнялся
+    // (214748366 при pageSize 10 давало 500, 429496731 — чужую страницу)
+    public async Task<MoviesPage> GetMoviesAsync(MovieQueryParameters movieQueryParameters)
     {
         IQueryable<Movie> movies = _context.Movies;
-        
+
         movieQueryParameters.Page ??= 1;
-        movieQueryParameters.PageSize ??= 10;
-        
+        movieQueryParameters.PageSize ??= DefaultPageSize;
+
         if(movieQueryParameters.Page <= 0 || movieQueryParameters.PageSize <= 0)
         {
             _logger.LogWarning("Page {0} or pageSize {1} not valid", movieQueryParameters.Page, movieQueryParameters.PageSize);
             throw new InvalidPageSizeException("Page and PageSize must be greater than 0");
+        }
+
+        // До расчёта Skip: смещение страницы должно считаться от уже урезанного размера
+        if (movieQueryParameters.PageSize > MaxPageSize)
+        {
+            _logger.LogInformation("PageSize {0} is above the maximum {1}, using {2}", movieQueryParameters.PageSize, MaxPageSize, DefaultPageSize);
+            movieQueryParameters.PageSize = DefaultPageSize;
         }
 
         if (movieQueryParameters.GenreId != null)
@@ -63,6 +78,17 @@ public class MovieService
         if (movieQueryParameters.InWatchlist != null)
             query = query.Where(m => m.InWatchlist == movieQueryParameters.InWatchlist);
 
+        // Общее число под теми же фильтрами (статус, жанр, поиск, watchlist), до сортировки и страницы:
+        // это то, что клиент листает, а не весь каталог
+        var totalCount = await query.CountAsync();
+
+        var page = (int)movieQueryParameters.Page;
+        var pageSize = (int)movieQueryParameters.PageSize;
+        var offset = (long)(page - 1) * pageSize;
+
+        if (offset >= totalCount)
+            return new MoviesPage([], totalCount);
+
         var desc = movieQueryParameters.SortByDesc is true;
 
         // Без sortBy (и для SortBy.Genre, пока это заглушка) — по названию
@@ -78,11 +104,14 @@ public class MovieService
         // внутри группы одинаковых Status/Rating — по названию; Title/Status/Rating не уникальны — без запасного ключа порядок внутри группы одинаковых значений случаен, страницы пересекаются
         query = ordered.ThenBy(m => m.Id);
 
-        query = query.Skip((int)((movieQueryParameters.Page - 1) * movieQueryParameters.PageSize)).Take((int)movieQueryParameters.PageSize);
+        // offset меньше totalCount (int), значит в int помещается
+        query = query.Skip((int)offset).Take(pageSize);
 
         var rows = await query.ToListAsync();
 
-        return rows.Select(m => new MovieDto(m.Id, m.Title, m.Genres, m.Year, m.Rating, m.UserStatus, m.InWatchlist, m.Notes)).ToList();
+        var items = rows.Select(m => new MovieDto(m.Id, m.Title, m.Genres, m.Year, m.Rating, m.UserStatus, m.InWatchlist, m.Notes)).ToList();
+
+        return new MoviesPage(items, totalCount);
     }
 
     public async Task<MovieDto?> CreateMovieAsync(NewMovie newMovie)

@@ -30,10 +30,20 @@ public class UserMovieDataService
         return await SaveAsync(movieId, userId, data => data.Status = status);
     }
 
+    // Решение 3.12: заметка не длиннее 500 символов (считаются единицы UTF-16, эмодзи занимает две). Длиннее — ошибка:
+    // молча обрезать нельзя, потеряется текст пользователя. Колонка в базе остаётся text, лимит держит только этот код
+    private const int MaxNotesLength = 500;
+
     public async Task<UserMovieDataDto?> UpdateNotesAsync(int movieId, int userId, string notes)
     {
         if (!await ExistAsync(movieId, userId))
             return null;
+
+        if (notes.Length > MaxNotesLength)
+        {
+            _logger.LogWarning("For ID {0}, notes length {1} is above {2}", movieId, notes.Length, MaxNotesLength);
+            throw new InvalidNotesException($"Notes must be at most {MaxNotesLength} characters");
+        }
 
         return await SaveAsync(movieId, userId, data => data.Notes = notes);
     }

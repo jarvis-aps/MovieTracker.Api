@@ -19,15 +19,25 @@ interface Movie {
   status: MovieStatus
 }
 
+// Ответ GET /movies: страница фильмов и сколько их всего под теми же фильтрами
+interface MoviesPage {
+  items: Movie[]
+  totalCount: number
+}
+
 function App() {
   const [movies, setMovies] = useState<Movie[]>([])
+  const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`${API_URL}/movies?userId=${CURRENT_USER_ID}`)
       .then((res) => res.json())
-      .then((data: Movie[]) => setMovies(data))
+      .then((data: MoviesPage) => {
+        setMovies(data.items)
+        setTotalCount(data.totalCount)
+      })
       .catch(() => setError('Не удалось загрузить список фильмов'))
       .finally(() => setLoading(false))
   }, [])
@@ -59,6 +69,7 @@ function App() {
   return (
     <main>
       <h1>MovieTracker</h1>
+      <p>Показано {movies.length} из {totalCount}</p>
       <ul>
         {movies.map((movie) => (
           <li key={movie.id}>
