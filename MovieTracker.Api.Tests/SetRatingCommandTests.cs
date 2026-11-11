@@ -46,6 +46,7 @@ public class SetRatingCommandTests(PostgresFixture postgres)
     [Theory]
     [InlineData(-0.1f)]
     [InlineData(10.1f)]
+    [InlineData(float.NaN)]
     public async Task Send_RatingOutOfRange_ExceptionPassesThroughMediatorAndSavesNothing(float rating)
     {
         var db = await postgres.CreateDatabaseAsync();

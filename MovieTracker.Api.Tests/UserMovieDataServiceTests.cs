@@ -38,9 +38,11 @@ public class UserMovieDataServiceTests(PostgresFixture postgres)
         }
     }
 
+    // NaN сюда же: любое сравнение с ним ложно, и проверка «< 0 || > 10» его пропускала (сохранялось в базу и ломало GET /movies пользователя)
     [Theory]
     [InlineData(-0.5f)]
     [InlineData(10.5f)]
+    [InlineData(float.NaN)]
     public async Task UpdateRatingAsync_OutOfRange_ThrowsAndSavesNothing(float rating)
     {
         var db = await postgres.CreateDatabaseAsync();

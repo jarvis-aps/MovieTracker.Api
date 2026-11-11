@@ -53,7 +53,9 @@ public class UserMovieDataService
         if (!await ExistAsync(movieId, userId))
             return null;
 
-        if (rating < 0 || rating > 10)
+        // NaN отдельно: любое сравнение с NaN ложно, поэтому «< 0 || > 10» его пропускало. Оно сохранялось в базу (real принимает NaN),
+        // клиент получал 500 (JSON не умеет NaN), а GET /movies этого пользователя отдавал 500, пока оценку не перезапишут
+        if (float.IsNaN(rating) || rating < 0 || rating > 10)
         {
             _logger.LogWarning("For ID {0}, rating {1} not valid", movieId, rating);
             throw new InvalidRatingException("Rating must be between 0 and 10");
