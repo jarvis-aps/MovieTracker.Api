@@ -68,7 +68,7 @@ public class SetNotesCommandTests(PostgresFixture postgres)
 
         var behaviors = scope.ServiceProvider.GetServices<IPipelineBehavior<SetNotesCommand, UserMovieDataDto?>>();
 
-        Assert.IsType<TimingBehavior<SetNotesCommand, UserMovieDataDto?>>(Assert.Single(behaviors));
+        Assert.Collection(behaviors, b => Assert.IsType<TimingBehavior<SetNotesCommand, UserMovieDataDto?>>(b), b => Assert.IsType<ValidationBehavior<SetNotesCommand, UserMovieDataDto?>>(b));
     }
 
     // Решение 3.12: заметка до 500 символов включительно

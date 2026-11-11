@@ -189,6 +189,54 @@ public class CreateMovieCommandTests(PostgresFixture postgres)
         Assert.Equal(1, await db.CountAllMoviesAsync());
     }
 
+    // Решение 3.22: некорректная команда не доходит до handler'а, ничего не создаётся, ошибки приходят сразу по всем полям.
+    // Раньше без названия или без списка жанров был 500, а пустое название, год -5 и год 99999 молча создавались
+    [Theory]
+    [InlineData("", 2000, "title")]
+    [InlineData("   ", 2000, "title")]
+    [InlineData("Фильм", -5, "year")]
+    [InlineData("Фильм", 99999, "year")]
+    public async Task Send_InvalidCommand_ThrowsValidationExceptionAndCreatesNothing(string title, int year, string expectedField)
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        await using var provider = MediatorTestProvider.Build(db);
+        using var scope = provider.CreateScope();
+
+        var exception = await Assert.ThrowsAsync<RequestValidationException>(() =>
+            scope.ServiceProvider.GetRequiredService<IMediator>().Send(new CreateMovieCommand(title, year, [])));
+
+        Assert.Equal([expectedField], exception.Errors.Select(e => e.Field));
+        Assert.Equal(0, await db.CountAllMoviesAsync());
+    }
+
+    // Нет списка жанров: раньше NullReferenceException и 500, теперь ошибка по полю genresId и ничего не создано
+    [Fact]
+    public async Task Send_CommandWithoutGenresList_IsRejectedByValidationInsteadOfFailing()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        await using var provider = MediatorTestProvider.Build(db);
+        using var scope = provider.CreateScope();
+
+        var exception = await Assert.ThrowsAsync<RequestValidationException>(() =>
+            scope.ServiceProvider.GetRequiredService<IMediator>().Send(new CreateMovieCommand("Фильм", 2000, null!)));
+
+        Assert.Equal(["genresId"], exception.Errors.Select(e => e.Field));
+        Assert.Equal(0, await db.CountAllMoviesAsync());
+    }
+
+    // Валидатор команды найден сканированием сборки (AddMediator), строку в Bootstrap добавлять не надо
+    [Fact]
+    public async Task AddMediator_RegistersValidatorOfCreateMovieCommand()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        await using var provider = MediatorTestProvider.Build(db);
+        using var scope = provider.CreateScope();
+
+        var validators = scope.ServiceProvider.GetServices<IValidator<CreateMovieCommand>>();
+
+        Assert.IsType<CreateMovieValidator>(Assert.Single(validators));
+    }
+
     // Добавленный фильм виден в каталоге вместе со своими жанрами: чтение и запись видят одну базу
     [Fact]
     public async Task Send_CreatedMovie_AppearsInCatalogWithItsGenres()
@@ -220,6 +268,6 @@ public class CreateMovieCommandTests(PostgresFixture postgres)
 
         var behaviors = scope.ServiceProvider.GetServices<IPipelineBehavior<CreateMovieCommand, MovieDto?>>();
 
-        Assert.IsType<TimingBehavior<CreateMovieCommand, MovieDto?>>(Assert.Single(behaviors));
+        Assert.Collection(behaviors, b => Assert.IsType<TimingBehavior<CreateMovieCommand, MovieDto?>>(b), b => Assert.IsType<ValidationBehavior<CreateMovieCommand, MovieDto?>>(b));
     }
 }

@@ -1,6 +1,6 @@
 # Схема CQRS в MovieTracker
 
-Обновлено: 2026-11-11 (состояние после задачи 3.21). Схема составлена вручную по коду проекта и отражает путь запроса через mediator, который автоматический разбор кода не показывает (handler находится во время работы по типу сообщения). При изменении архитектуры схему нужно обновлять руками; интерактивная версия с таблицей соответствия учебной картинке была опубликована как артефакт в сессии Claude Code.
+Обновлено: 2026-11-11 (состояние после задачи 3.22). Схема составлена вручную по коду проекта и отражает путь запроса через mediator, который автоматический разбор кода не показывает (handler находится во время работы по типу сообщения). При изменении архитектуры схему нужно обновлять руками. Интерактивная версия с таблицей соответствия учебной картинке была опубликована как артефакт в сессии Claude Code; это снимок на состояние после задачи 3.21 (без проверки в конвейере), сам он не обновляется.
 
 ```mermaid
 flowchart LR
@@ -20,7 +20,9 @@ flowchart LR
         direction TB
         send["IMediator.Send"]
         timing["TimingBehavior<br/>замер времени, строка в лог"]
+        validation["ValidationBehavior<br/>правила до handler'а,<br/>ошибка: handler не вызывается"]
         send --> timing
+        timing --> validation
     end
 
     subgraph write["Запись: Commands/"]
@@ -29,6 +31,7 @@ flowchart LR
         h2["SetNotesHandler<br/>заметка до 500 символов"]
         h3["SetRatingHandler<br/>оценка 0–10, не NaN"]
         h4["CreateMovieHandler<br/>дубликат: null, то есть 400"]
+        v4["CreateMovieValidator<br/>название до 200 символов, год 1888 и до<br/>текущего плюс 5, жанры: список до 10"]
         writer["UserMovieDataWriter<br/>существование, найти или создать запись,<br/>сохранить с повтором при гонке"]
     end
 
@@ -48,11 +51,12 @@ flowchart LR
     e4 -->|CreateMovieCommand| send
     e5 -->|GetMoviesQuery| send
 
-    timing --> h1
-    timing --> h2
-    timing --> h3
-    timing --> h4
-    timing --> h5
+    validation --> h1
+    validation --> h2
+    validation --> h3
+    validation --> h4
+    validation --> h5
+    validation -.->|проверяет| v4
 
     h1 --> writer
     h2 --> writer
@@ -70,17 +74,17 @@ flowchart LR
     classDef read fill:#e2f4f1,stroke:#0f766e,color:#18202e
     classDef outside fill:#f3f4f6,stroke:#6b7280,stroke-dasharray:5 4,color:#18202e
     classDef infra fill:#efe9fc,stroke:#6140b8,color:#18202e
-    class e1,e2,e3,e4,h1,h2,h3,h4,writer write
+    class e1,e2,e3,e4,h1,h2,h3,h4,v4,writer write
     class e5,h5,reader read
     class e6,wl outside
-    class send,timing infra
+    class send,timing,validation infra
     style http fill:none,stroke:#9aa5b8
     style med fill:none,stroke:#ab97e3
     style write fill:none,stroke:#e5a560
     style read fill:none,stroke:#62bbb0
 ```
 
-Эндпоинты описаны в `Initializer/Bootstrap.cs`. Ответ идёт тем же путём назад. Результат в код ответа переводит эндпоинт: `null` даёт 404 у `PATCH` и 400 у `POST`, исключения о неверных границах (`InvalidRatingException`, `InvalidNotesException`, `InvalidPageSizeException`) дают 400, успех даёт 200 (у `POST` 201).
+Эндпоинты описаны в `Initializer/Bootstrap.cs`. Ответ идёт тем же путём назад. Результат в код ответа переводит эндпоинт: `null` даёт 404 у `PATCH` и 400 у `POST`, исключения о неверных границах (`InvalidRatingException`, `InvalidNotesException`, `InvalidPageSizeException`) дают 400, успех даёт 200 (у `POST` 201). Нарушение правил `POST` (`RequestValidationException` из `ValidationBehavior`) эндпоинт переводит в 400 в формате `ValidationProblemDetails`: словарь `errors` по полям `title`, `year`, `genresId`, все ошибки сразу; handler при этом не вызывается. Замер (`TimingBehavior`) стоит снаружи проверки, поэтому пишет время и для отклонённых запросов.
 
 ## Чем проект отличается от учебной картинки «Client, Command Model, Write, Event, Read, Query Model»
 
@@ -91,6 +95,6 @@ flowchart LR
 | Event | Нет. Handler'ы ничего не публикуют, события в плане этапа 3 |
 | Materialized View, отдельная база чтения | Нет. Запрос читает те же таблицы, которые пишут команды |
 | Query Model | `GetMoviesQuery` и `GetMoviesHandler` в `Queries/`; список watchlist handler берёт через `IWatchlistReader` |
-| (нет на картинке) | Mediator с конвейером (`TimingBehavior` оборачивает каждый вызов) и watchlist (`PUT`, `DELETE`), который пока вызывает сервис напрямую |
+| (нет на картинке) | Mediator с конвейером (`TimingBehavior` оборачивает каждый вызов, `ValidationBehavior` проверяет запрос до handler'а) и watchlist (`PUT`, `DELETE`), который пока вызывает сервис напрямую |
 
 Разделение команд и запросов в проекте сделано на уровне кода (сообщение, mediator, handler), а не на уровне хранилищ: база одна, событий нет.

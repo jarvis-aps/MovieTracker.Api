@@ -30,7 +30,9 @@ builder.Services.AddScoped<UserMovieDataWriter>();
 builder.Services.AddScoped<WatchlistService>();
 // GetMoviesHandler получает watchlist только через интерфейс; пересылка на тот же WatchlistService, чтобы на запрос был один экземпляр
 builder.Services.AddScoped<IWatchlistReader>(services => services.GetRequiredService<WatchlistService>());
-// Mediator, handler'ы команд и запросов (по сборке) и сквозные поведения вокруг них (замер времени)
+// Время для правил, которые от него зависят (верхняя граница года в CreateMovieValidator); в тестах подменяется
+builder.Services.AddSingleton(TimeProvider.System);
+// Mediator, handler'ы команд и запросов и валидаторы (по сборке) и сквозные поведения вокруг них (замер времени, проверка)
 builder.Services.AddMediator(typeof(Program).Assembly);
 builder.Services.AddAsyncInitializer<GenresSeeder>();
 builder.Services.AddAsyncInitializer<MovieSeeder>();
@@ -149,10 +151,22 @@ app.MapPatch("/movies/{id}/rating", async (int id, int userId, float rating, IMe
 //   Личные данные (статус, оценка, заметка) пишутся только через PATCH; лишние поля в теле (в том числе прежние status и notes) игнорируются.
 // Что отдаёт: 201, заголовок Location: /movies/{id} (отдельного GET по id пока нет) и MovieDto нового фильма
 //   (оценка, статус и заметка — null, inWatchlist — false). 400 без тела — фильм с таким названием уже есть.
-// Тело биндится прямо в неизменяемую команду CreateMovieCommand, дальше её обрабатывает mediator.
+// Тело биндится прямо в неизменяемую команду CreateMovieCommand, дальше её обрабатывает mediator: сначала ValidationBehavior проверяет поля
+//   (title обязателен и не длиннее 200 символов, year от 1888 до текущего года плюс 5, genresId обязателен и не длиннее 10),
+//   затем handler. Нарушение правил — 400 в формате ValidationProblemDetails: словарь errors по полям (title, year, genresId), все ошибки сразу.
 app.MapPost("/movies", async (CreateMovieCommand command, IMediator mediator) =>
 {
-    var result = await mediator.Send(command);
+    MovieDto? result;
+
+    try
+    {
+        result = await mediator.Send(command);
+    }
+    catch (RequestValidationException exception)
+    {
+        return Results.ValidationProblem(exception.ToErrorsByField());
+    }
+
     return result is null ? Results.BadRequest() : Results.Created($"/movies/{result.Id}", result);
 });
 

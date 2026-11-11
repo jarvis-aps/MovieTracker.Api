@@ -71,7 +71,7 @@ public class SetRatingCommandTests(PostgresFixture postgres)
 
         var behaviors = scope.ServiceProvider.GetServices<IPipelineBehavior<SetRatingCommand, UserMovieDataDto?>>();
 
-        Assert.IsType<TimingBehavior<SetRatingCommand, UserMovieDataDto?>>(Assert.Single(behaviors));
+        Assert.Collection(behaviors, b => Assert.IsType<TimingBehavior<SetRatingCommand, UserMovieDataDto?>>(b), b => Assert.IsType<ValidationBehavior<SetRatingCommand, UserMovieDataDto?>>(b));
     }
 
     // Границы диапазона входят в него

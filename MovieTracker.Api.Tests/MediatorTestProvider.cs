@@ -16,6 +16,7 @@ internal static class MediatorTestProvider
     {
         var services = new ServiceCollection();
         services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+        services.AddSingleton(TimeProvider.System);
         services.AddScoped(_ => db.NewContext());
         services.AddScoped<UserMovieDataWriter>();
         services.AddScoped<WatchlistService>();

@@ -68,6 +68,6 @@ public class GetMoviesQueryTests(PostgresFixture postgres)
 
         var behaviors = scope.ServiceProvider.GetServices<IPipelineBehavior<GetMoviesQuery, MoviesPage>>();
 
-        Assert.IsType<TimingBehavior<GetMoviesQuery, MoviesPage>>(Assert.Single(behaviors));
+        Assert.Collection(behaviors, b => Assert.IsType<TimingBehavior<GetMoviesQuery, MoviesPage>>(b), b => Assert.IsType<ValidationBehavior<GetMoviesQuery, MoviesPage>>(b));
     }
 }

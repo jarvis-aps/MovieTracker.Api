@@ -52,7 +52,7 @@ public class SetStatusCommandTests(PostgresFixture postgres)
 
         var behaviors = scope.ServiceProvider.GetServices<IPipelineBehavior<SetStatusCommand, UserMovieDataDto?>>();
 
-        Assert.IsType<TimingBehavior<SetStatusCommand, UserMovieDataDto?>>(Assert.Single(behaviors));
+        Assert.Collection(behaviors, b => Assert.IsType<TimingBehavior<SetStatusCommand, UserMovieDataDto?>>(b), b => Assert.IsType<ValidationBehavior<SetStatusCommand, UserMovieDataDto?>>(b));
     }
 
     // Повтор команды меняет ту же запись, а не создаёт вторую

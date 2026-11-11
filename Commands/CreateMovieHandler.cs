@@ -8,8 +8,8 @@ namespace MovieTracker.Api.Commands;
 
 // Логика переехала сюда из MovieService.CreateMovieAsync (решение 3.19). Дубликатом считается фильм с тем же названием без учёта
 // регистра и пробелов по краям и тем же годом; уникальность гарантирует индекс по (TitleKey, Year), TitleKey считает база
-// (решения 3.20 и 3.21). Не менялось и осталось известной особенностью: NullReferenceException (500) при отсутствии genresId
-// в теле, отсутствие проверки значений (пустое название, любой год)
+// (решения 3.20 и 3.21). Поля команды проверяет CreateMovieValidator через ValidationBehavior до handler'а (решение 3.22),
+// поэтому сюда доходит команда с названием, годом и списком жанров, прошедшими правила
 public class CreateMovieHandler(MovieTrackerDbContext context) : IRequestHandler<CreateMovieCommand, MovieDto?>
 {
     // Имя индекса из OnModelCreating (EF называет его IX_{таблица}_{колонки}): по нему наш дубликат отличается от любого другого
@@ -34,9 +34,8 @@ public class CreateMovieHandler(MovieTrackerDbContext context) : IRequestHandler
 
         // Быстрый путь: очевидный дубликат отвечаем без попытки вставки. Гарантию даёт индекс ниже, а не эта проверка:
         // два одновременных запроса с одной парой оба проходят её. Ключ считаем так же, как колонка TitleKey в базе (btrim убирает
-        // только пробелы, поэтому Trim(' ')); если C# и Postgres разойдутся на экзотическом символе, вставку остановит индекс.
-        // «?.»: без названия (null) запрос идёт дальше и падает на NOT NULL в базе, как и раньше
-        var titleKey = command.Title?.Trim(' ').ToLowerInvariant();
+        // только пробелы, поэтому Trim(' ')); если C# и Postgres разойдутся на экзотическом символе, вставку остановит индекс
+        var titleKey = command.Title.Trim(' ').ToLowerInvariant();
 
         if (await context.Movies.AnyAsync(m => m.TitleKey == titleKey && m.Year == command.Year))
         {
