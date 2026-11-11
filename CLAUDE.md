@@ -68,12 +68,13 @@ docker exec -it movietracker-db psql -U movietracker -d movietracker
 
 ```
 Initializer/         # Bootstrap.cs (бывший Program.cs, переименован и перенесён пользователем в задаче 3.2 — "всё для запуска приложения в одном месте") — точка входа + все Minimal API endpoints инлайн, без Main-класса; MovieTrackerDbContext.cs — DbContext, лежит здесь же по той же идее, не в отдельной Data/
-Models/               # сущности (Movie, Genre, User, UserMovieData), enum'ы (Status, SortBy), DTO (MovieDto, GenreDto, NewMovie, MoviesPage — страница каталога с totalCount), MovieQueryParameters
+Models/               # сущности (Movie, Genre, User, UserMovieData), enum'ы (Status, SortBy), DTO (MovieDto, GenreDto, NewMovie, MoviesPage — страница каталога с totalCount)
 Seeders/              # GenresSeeder, MovieSeeder, UsersSeeder, UserMovieDataSeeder — все IAsyncInitializer; порядок регистрации в Bootstrap.cs важен — каждый следующий зависит по FK от данных предыдущих
 Services/             # MovieService (каталог и список), WatchlistService, UserMovieDataService (запись статуса/оценки/заметок, 3.8) — бизнес-логика, без HTTP-семантики; IWatchlistReader — единственный способ для MovieService узнать про watchlist (таблицу WatchlistItems он напрямую не читает, 3.7); личные данные для списка MovieService пока читает сам (m.MoviesData) — чтение отдельной задачей
 Exceptions/           # кастомные исключения для доменной валидации (InvalidRatingException, InvalidPageSizeException, InvalidNotesException)
 Mediator/             # свой мини-mediator (3.14, не MediatR): IMediator/DefaultMediator, IRequest, IRequestHandler, IPipelineBehavior, TimingBehavior (замер времени), AddMediator (сканирует сборку на handler'ы)
-Commands/             # команды CQRS и их handler'ы (SetStatusCommand/SetStatusHandler, 3.14); handler пока тонкий и зовёт UserMovieDataService: когда командами станут статус, оценка и заметка, логика переедет в handler'ы, сервис удалить (обязательное продолжение, см. PROJECT_BRIEF.md). Queries/ появится с задачей 3.15
+Commands/             # команды CQRS и их handler'ы (SetStatusCommand/SetStatusHandler, 3.14); handler пока тонкий и зовёт UserMovieDataService: когда командами станут статус, оценка и заметка, логика переедет в handler'ы, сервис удалить (обязательное продолжение, см. PROJECT_BRIEF.md)
+Queries/              # запросы CQRS и их handler'ы (GetMoviesQuery/GetMoviesHandler, 3.15); запрос — неизменяемая запись, дефолты page/pageSize лежат в ней и биндятся через [AsParameters] прямо из query-строки; handler тонкий и зовёт MovieService.GetMoviesAsync, перенос логики в handler — отдельной задачей
 Migrations/           # генерируется EF Core, руками не редактировать
 client/               # React + TypeScript + Vite, отдельный фронтенд-проект
 MovieTracker.Api.Tests/  # xUnit + Testcontainers: тесты сервисов против Postgres в контейнере (3.6); отдельный проект, в компиляцию приложения не входит

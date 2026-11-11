@@ -3,6 +3,7 @@ using MovieTracker.Api.Seeders;
 using MovieTracker.Api.Exceptions;
 using MovieTracker.Api.Initializer;
 using MovieTracker.Api.Models;
+using MovieTracker.Api.Queries;
 
 namespace MovieTracker.Api.Services;
 
@@ -19,41 +20,36 @@ public class MovieService
         _watchlist = watchlist;
     }
 
-    // Решение 3.12 (числа пересмотрены в 3.13): за один запрос больше MaxPageSize фильмов не отдаём, иначе ответ (с заметками)
-    // растёт без границы. Если клиент просит больше, ошибки нет: страница будет размера по умолчанию
-    private const int DefaultPageSize = 100;
-    private const int MaxPageSize = 100;
-
     // Решение 3.13: у номера страницы нет своей границы, её задаёт число фильмов (totalCount). Страница за последней — пустой
     // список и честный totalCount, без запроса в базу. Смещение считается в long: в int (page - 1) * pageSize переполнялся
-    // (214748366 при pageSize 10 давало 500, 429496731 — чужую страницу)
-    public async Task<MoviesPage> GetMoviesAsync(MovieQueryParameters movieQueryParameters)
+    // (214748366 при pageSize 10 давало 500, 429496731 — чужую страницу).
+    // Решение 3.15: запрос неизменяем и дефолты page/pageSize лежат в нём самом; здесь значения только читаются
+    public async Task<MoviesPage> GetMoviesAsync(GetMoviesQuery request)
     {
         IQueryable<Movie> movies = _context.Movies;
 
-        movieQueryParameters.Page ??= 1;
-        movieQueryParameters.PageSize ??= DefaultPageSize;
-
-        if(movieQueryParameters.Page <= 0 || movieQueryParameters.PageSize <= 0)
+        if (request.Page <= 0 || request.PageSize <= 0)
         {
-            _logger.LogWarning("Page {0} or pageSize {1} not valid", movieQueryParameters.Page, movieQueryParameters.PageSize);
+            _logger.LogWarning("Page {0} or pageSize {1} not valid", request.Page, request.PageSize);
             throw new InvalidPageSizeException("Page and PageSize must be greater than 0");
         }
 
-        // До расчёта Skip: смещение страницы должно считаться от уже урезанного размера
-        if (movieQueryParameters.PageSize > MaxPageSize)
+        // До расчёта Skip: смещение страницы должно считаться от уже урезанного размера. Урезанный размер — результат правила,
+        // а не дефолт, и записать его в неизменяемый запрос нельзя, поэтому он единственная локальная переменная
+        var pageSize = request.PageSize;
+        if (pageSize > GetMoviesQuery.MaxPageSize)
         {
-            _logger.LogInformation("PageSize {0} is above the maximum {1}, using {2}", movieQueryParameters.PageSize, MaxPageSize, DefaultPageSize);
-            movieQueryParameters.PageSize = DefaultPageSize;
+            _logger.LogInformation("PageSize {0} is above the maximum {1}, using {2}", pageSize, GetMoviesQuery.MaxPageSize, GetMoviesQuery.DefaultPageSize);
+            pageSize = GetMoviesQuery.DefaultPageSize;
         }
 
-        if (movieQueryParameters.GenreId != null)
-            movies = movies.Where(m => m.Genres.Any(g => g.Id == movieQueryParameters.GenreId));
+        if (request.GenreId != null)
+            movies = movies.Where(m => m.Genres.Any(g => g.Id == request.GenreId));
 
-        if (!string.IsNullOrEmpty(movieQueryParameters.SearchPart))
-            movies = movies.Where(m => EF.Functions.ILike(m.Title, $"%{movieQueryParameters.SearchPart}%"));
+        if (!string.IsNullOrEmpty(request.SearchPart))
+            movies = movies.Where(m => EF.Functions.ILike(m.Title, $"%{request.SearchPart}%"));
 
-        var userId = movieQueryParameters.UserId;
+        var userId = request.UserId;
 
         // Watchlist — чужой модуль: его таблицу не читаем, берём только id фильмов и отдаём их в тот же SQL (= ANY(@ids)),
         // поэтому фильтр и флаг по-прежнему считаются в одном запросе, до Skip/Take
@@ -72,27 +68,25 @@ public class MovieService
             Notes = m.MoviesData.Where(d => d.UserId == userId).Select(d => d.Notes).FirstOrDefault()
         });
 
-        if (movieQueryParameters.Status != null)
-            query = query.Where(m => m.UserStatus == movieQueryParameters.Status);
+        if (request.Status != null)
+            query = query.Where(m => m.UserStatus == request.Status);
 
-        if (movieQueryParameters.InWatchlist != null)
-            query = query.Where(m => m.InWatchlist == movieQueryParameters.InWatchlist);
+        if (request.InWatchlist != null)
+            query = query.Where(m => m.InWatchlist == request.InWatchlist);
 
         // Общее число под теми же фильтрами (статус, жанр, поиск, watchlist), до сортировки и страницы:
         // это то, что клиент листает, а не весь каталог
         var totalCount = await query.CountAsync();
 
-        var page = (int)movieQueryParameters.Page;
-        var pageSize = (int)movieQueryParameters.PageSize;
-        var offset = (long)(page - 1) * pageSize;
+        var offset = (long)(request.Page - 1) * pageSize;
 
         if (offset >= totalCount)
             return new MoviesPage([], totalCount);
 
-        var desc = movieQueryParameters.SortByDesc is true;
+        var desc = request.SortByDesc is true;
 
         // Без sortBy (и для SortBy.Genre, пока это заглушка) — по названию
-        var ordered = movieQueryParameters.SortBy switch
+        var ordered = request.SortBy switch
         {
             SortBy.Status => (desc ? query.OrderByDescending(m => m.UserStatus) : query.OrderBy(m => m.UserStatus)).ThenBy(m => m.Title),
             // фильмы без оценки всегда в конце: пользователь мог начать смотреть, но ещё не оценить

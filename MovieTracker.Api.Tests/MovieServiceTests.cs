@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using MovieTracker.Api.Exceptions;
 using MovieTracker.Api.Models;
+using MovieTracker.Api.Queries;
 using MovieTracker.Api.Services;
 
 namespace MovieTracker.Api.Tests;
@@ -15,9 +16,21 @@ public class MovieServiceTests(PostgresFixture postgres)
         return new MovieService(context, NullLogger<MovieService>.Instance, new WatchlistService(context, NullLogger<WatchlistService>.Instance));
     }
 
-    private static MovieQueryParameters Query(int userId, Status? status = null, SortBy? sortBy = null, bool? sortByDesc = null,
-        int? page = null, int? pageSize = null, string? searchPart = null, bool? inWatchlist = null) =>
-        new(userId, status, genreId: null, sortBy, sortByDesc, page, pageSize, searchPart, inWatchlist);
+    // page и pageSize, которые тест не передал, остаются теми, что записаны в самом запросе (1 и 100): дефолты здесь не дублируются,
+    // иначе тесты «без pageSize — сто фильмов» проверяли бы копию, а не настоящий дефолт
+    private static GetMoviesQuery Query(int userId, Status? status = null, SortBy? sortBy = null, bool? sortByDesc = null,
+        int? page = null, int? pageSize = null, string? searchPart = null, bool? inWatchlist = null)
+    {
+        var query = new GetMoviesQuery(userId, status, SortBy: sortBy, SortByDesc: sortByDesc, SearchPart: searchPart, InWatchlist: inWatchlist);
+
+        if (page is { } p)
+            query = query with { Page = p };
+
+        if (pageSize is { } s)
+            query = query with { PageSize = s };
+
+        return query;
+    }
 
     // ---------- валидация ----------
 

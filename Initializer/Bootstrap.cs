@@ -6,6 +6,7 @@ using MovieTracker.Api.Exceptions;
 using MovieTracker.Api.Initializer;
 using MovieTracker.Api.Mediator;
 using MovieTracker.Api.Models;
+using MovieTracker.Api.Queries;
 using MovieTracker.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -76,13 +77,14 @@ app.UseCors();
 // Что отдаёт: 200 и объект { items, totalCount }. items — страница MovieDto (id, название, жанры, год, оценка, статус, inWatchlist, заметка),
 //   totalCount — сколько всего фильмов под теми же фильтрами (без учёта page/pageSize). Страница за последней — тоже 200: items пустой, totalCount настоящий.
 //   Фильм без личной записи приходит как NotWatched без оценки и заметки. 400 — page или pageSize <= 0.
-app.MapGet("/movies", async (MovieService service, [AsParameters]MovieQueryParameters movieQueryParameters) =>
+// Параметры биндятся прямо в неизменяемый запрос GetMoviesQuery (дефолты page и pageSize заданы в нём), дальше его обрабатывает mediator.
+app.MapGet("/movies", async ([AsParameters] GetMoviesQuery query, IMediator mediator) =>
 {
     MoviesPage result;
 
     try
     {
-        result = await service.GetMoviesAsync(movieQueryParameters);
+        result = await mediator.Send(query);
     }
     catch (InvalidPageSizeException exception)
     {
