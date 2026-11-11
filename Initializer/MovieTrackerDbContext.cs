@@ -18,6 +18,12 @@ public class MovieTrackerDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        // Решение 3.20: фильм уникален по паре (название, год), ремейки с тем же названием допустимы. Гарантию даёт индекс,
+        // а не проверка в коде: два одновременных POST с одной парой иначе оба проходили проверку и создавали дубликат
+        modelBuilder.Entity<Movie>()
+            .HasIndex(m => new { m.Title, m.Year })
+            .IsUnique();
+
         modelBuilder.Entity<UserMovieData>()
             .HasIndex(d => new { d.UserId, d.MovieId })
             .IsUnique();

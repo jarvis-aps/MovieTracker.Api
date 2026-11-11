@@ -113,11 +113,12 @@ public class TestDatabase(string connectionString)
         return await context.Movies.CountAsync(m => m.Title == title);
     }
 
-    // Много фильмов одним SaveChanges — для тестов, которым нужен объём, а не разные данные
+    // Много фильмов одним SaveChanges — для тестов, которым нужен объём, а не разные данные. Название одно, годы разные:
+    // уникальный индекс (название, год) не пропустил бы одинаковые пары, а одинаковые названия тестам сортировки нужны
     public async Task<List<int>> AddMoviesAsync(string title, int count)
     {
         await using var context = NewContext();
-        var movies = Enumerable.Range(0, count).Select(_ => new Movie(title, 2000)).ToList();
+        var movies = Enumerable.Range(0, count).Select(i => new Movie(title, 1000 + i)).ToList();
         context.Movies.AddRange(movies);
         await context.SaveChangesAsync();
         return movies.Select(m => m.Id).ToList();
@@ -158,7 +159,7 @@ public class TestDatabase(string connectionString)
     // Для точного воспроизведения гонки первого PATCH: вставляет запись пары в транзакции, которую пока не завершает.
     // Пока она открыта, другая вставка той же пары (её не видно) встанет в ожидание на уникальном индексе (UserId, MovieId);
     // после CommitAsync ждущий получит нарушение уникальности, ровно как проигравший в настоящей гонке
-    public async Task<UncommittedUserData> InsertUserDataWithoutCommitAsync(int userId, int movieId, Status status)
+    public async Task<UncommittedInsert> InsertUserDataWithoutCommitAsync(int userId, int movieId, Status status)
     {
         var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
@@ -171,7 +172,23 @@ public class TestDatabase(string connectionString)
         command.Parameters.AddWithValue("status", (int)status);
         await command.ExecuteNonQueryAsync();
 
-        return new UncommittedUserData(connection, transaction);
+        return new UncommittedInsert(connection, transaction);
+    }
+
+    // То же для фильма: вставляет фильм (название, год) в незавершённой транзакции; вторая вставка той же пары встанет на уникальном
+    // индексе (название, год) и после CommitAsync получит нарушение уникальности
+    public async Task<UncommittedInsert> InsertMovieWithoutCommitAsync(string title, int year)
+    {
+        var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        var transaction = await connection.BeginTransactionAsync();
+
+        await using var command = new NpgsqlCommand("""INSERT INTO "Movies" ("Title", "Year") VALUES (@title, @year)""", connection, transaction);
+        command.Parameters.AddWithValue("title", title);
+        command.Parameters.AddWithValue("year", year);
+        await command.ExecuteNonQueryAsync();
+
+        return new UncommittedInsert(connection, transaction);
     }
 
     // Ждёт, пока кто-то в базе встанет в ожидание блокировки (проигравший упёрся в незавершённую вставку победителя).
@@ -196,7 +213,7 @@ public class TestDatabase(string connectionString)
 }
 
 // Открытая транзакция с вставленной, но не подтверждённой записью. Если её не подтвердили, при освобождении откатывается
-public sealed class UncommittedUserData(NpgsqlConnection connection, NpgsqlTransaction transaction) : IAsyncDisposable
+public sealed class UncommittedInsert(NpgsqlConnection connection, NpgsqlTransaction transaction) : IAsyncDisposable
 {
     public Task CommitAsync() => transaction.CommitAsync();
 

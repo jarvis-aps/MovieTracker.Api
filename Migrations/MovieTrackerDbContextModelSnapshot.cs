@@ -71,6 +71,9 @@ namespace MovieTracker.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Title", "Year")
+                        .IsUnique();
+
                     b.ToTable("Movies");
                 });
 
