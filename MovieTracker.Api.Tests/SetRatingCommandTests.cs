@@ -73,4 +73,39 @@ public class SetRatingCommandTests(PostgresFixture postgres)
 
         Assert.IsType<TimingBehavior<SetRatingCommand, UserMovieDataDto?>>(Assert.Single(behaviors));
     }
+
+    // Границы диапазона входят в него
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(10f)]
+    public async Task Send_BoundaryValues_AreAccepted(float rating)
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var movieId = await db.AddMovieAsync("Дюна");
+        await using var provider = CommandTestProvider.Build(db);
+        using var scope = provider.CreateScope();
+
+        var result = await scope.ServiceProvider.GetRequiredService<IMediator>().Send(new SetRatingCommand(movieId, userId, rating));
+
+        Assert.Equal(new UserMovieDataDto(movieId, Status.NotWatched, rating, null), result);
+    }
+
+    // Порядок проверок: сначала «фильм и пользователь есть» (null, то есть 404 в эндпоинте), потом диапазон (ошибка, то есть 400).
+    // Поменять их местами значит сменить ответ клиенту: вместо 404 придёт 400
+    [Theory]
+    [InlineData(11f)]
+    [InlineData(float.NaN)]
+    public async Task Send_UnknownMovieOrUserAndInvalidRating_ReturnsNullNotException(float rating)
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var movieId = await db.AddMovieAsync("Дюна");
+        await using var provider = CommandTestProvider.Build(db);
+        using var scope = provider.CreateScope();
+        var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+
+        Assert.Null(await mediator.Send(new SetRatingCommand(9999, userId, rating)));
+        Assert.Null(await mediator.Send(new SetRatingCommand(movieId, 9999, rating)));
+    }
 }

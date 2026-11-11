@@ -129,4 +129,55 @@ public class TestDatabase(string connectionString)
         await using var context = NewContext();
         return await context.UserMovieData.CountAsync(d => d.UserId == userId && d.MovieId == movieId);
     }
+
+    // Для точного воспроизведения гонки первого PATCH: вставляет запись пары в транзакции, которую пока не завершает.
+    // Пока она открыта, другая вставка той же пары (её не видно) встанет в ожидание на уникальном индексе (UserId, MovieId);
+    // после CommitAsync ждущий получит нарушение уникальности, ровно как проигравший в настоящей гонке
+    public async Task<UncommittedUserData> InsertUserDataWithoutCommitAsync(int userId, int movieId, Status status)
+    {
+        var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        var transaction = await connection.BeginTransactionAsync();
+
+        await using var command = new NpgsqlCommand(
+            """INSERT INTO "UserMovieData" ("UserId", "MovieId", "Status") VALUES (@userId, @movieId, @status)""", connection, transaction);
+        command.Parameters.AddWithValue("userId", userId);
+        command.Parameters.AddWithValue("movieId", movieId);
+        command.Parameters.AddWithValue("status", (int)status);
+        await command.ExecuteNonQueryAsync();
+
+        return new UncommittedUserData(connection, transaction);
+    }
+
+    // Ждёт, пока кто-то в базе встанет в ожидание блокировки (проигравший упёрся в незавершённую вставку победителя).
+    // Если писатель завершился, так и не встав в ожидание, или ожидание не наступило за 10 секунд, гонка не воспроизвелась
+    public async Task WaitUntilWriterIsBlockedAsync(Task writer)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+
+        for (var attempt = 0; attempt < 500 && !writer.IsCompleted; attempt++)
+        {
+            await using var command = new NpgsqlCommand("SELECT count(*) FROM pg_locks WHERE NOT granted", connection);
+
+            if ((long)(await command.ExecuteScalarAsync())! > 0)
+                return;
+
+            await Task.Delay(20);
+        }
+
+        throw new InvalidOperationException("The second writer did not block on the unique index, the race was not reproduced");
+    }
+}
+
+// Открытая транзакция с вставленной, но не подтверждённой записью. Если её не подтвердили, при освобождении откатывается
+public sealed class UncommittedUserData(NpgsqlConnection connection, NpgsqlTransaction transaction) : IAsyncDisposable
+{
+    public Task CommitAsync() => transaction.CommitAsync();
+
+    public async ValueTask DisposeAsync()
+    {
+        await transaction.DisposeAsync();
+        await connection.DisposeAsync();
+    }
 }

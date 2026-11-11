@@ -26,7 +26,8 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddScoped<MovieService>();
-builder.Services.AddScoped<UserMovieDataService>();
+// Механика записи личных данных для handler'ов команд статуса, заметки и оценки (handler'ы находит AddMediator, помощника регистрируем сами)
+builder.Services.AddScoped<UserMovieDataWriter>();
 builder.Services.AddScoped<WatchlistService>();
 // MovieService получает watchlist только через интерфейс; пересылка на тот же WatchlistService, чтобы на запрос был один экземпляр
 builder.Services.AddScoped<IWatchlistReader>(services => services.GetRequiredService<WatchlistService>());

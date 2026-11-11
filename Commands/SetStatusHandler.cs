@@ -1,13 +1,17 @@
 using MovieTracker.Api.Mediator;
 using MovieTracker.Api.Models;
-using MovieTracker.Api.Services;
 
 namespace MovieTracker.Api.Commands;
 
-// Тонкий handler (решение 3.14): логика остаётся в UserMovieDataService. Она переедет сюда, когда командами станут
-// все три операции (статус, оценка, заметка): общие части SaveAsync, ExistAsync и GetOrCreateAsync нужны всем трём
-public class SetStatusHandler(UserMovieDataService service) : IRequestHandler<SetStatusCommand, UserMovieDataDto?>
+// Поставить статус: у этой операции нет своих проверок, поэтому handler только проверяет существование и просит помощника записать.
+// null — фильм или пользователь не найден
+public class SetStatusHandler(UserMovieDataWriter writer) : IRequestHandler<SetStatusCommand, UserMovieDataDto?>
 {
-    public Task<UserMovieDataDto?> Handle(SetStatusCommand command) =>
-        service.UpdateStatusAsync(command.MovieId, command.UserId, command.Status);
+    public async Task<UserMovieDataDto?> Handle(SetStatusCommand command)
+    {
+        if (!await writer.ExistAsync(command.MovieId, command.UserId))
+            return null;
+
+        return await writer.SaveAsync(command.MovieId, command.UserId, data => data.Status = command.Status);
+    }
 }

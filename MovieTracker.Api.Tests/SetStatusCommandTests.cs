@@ -54,4 +54,24 @@ public class SetStatusCommandTests(PostgresFixture postgres)
 
         Assert.IsType<TimingBehavior<SetStatusCommand, UserMovieDataDto?>>(Assert.Single(behaviors));
     }
+
+    // Повтор команды меняет ту же запись, а не создаёт вторую
+    [Fact]
+    public async Task Send_RepeatedCommand_UpdatesSingleRowAndDoesNotDuplicate()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var movieId = await db.AddMovieAsync("Дюна");
+        await using var provider = CommandTestProvider.Build(db);
+
+        // каждый вызов в своём scope, как два отдельных запроса
+        using var firstScope = provider.CreateScope();
+        var first = await firstScope.ServiceProvider.GetRequiredService<IMediator>().Send(new SetStatusCommand(movieId, userId, Status.Watching));
+        using var secondScope = provider.CreateScope();
+        var second = await secondScope.ServiceProvider.GetRequiredService<IMediator>().Send(new SetStatusCommand(movieId, userId, Status.Watched));
+
+        Assert.Equal(Status.Watching, first?.Status);
+        Assert.Equal(Status.Watched, second?.Status);
+        Assert.Equal(1, await db.CountUserDataAsync(userId, movieId));
+    }
 }

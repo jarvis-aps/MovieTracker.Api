@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using MovieTracker.Api.Commands;
 using MovieTracker.Api.Mediator;
-using MovieTracker.Api.Services;
 
 namespace MovieTracker.Api.Tests;
 
@@ -16,7 +15,7 @@ internal static class CommandTestProvider
         var services = new ServiceCollection();
         services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
         services.AddScoped(_ => db.NewContext());
-        services.AddScoped<UserMovieDataService>();
+        services.AddScoped<UserMovieDataWriter>();
         services.AddMediator(typeof(SetStatusHandler).Assembly);
 
         return services.BuildServiceProvider();

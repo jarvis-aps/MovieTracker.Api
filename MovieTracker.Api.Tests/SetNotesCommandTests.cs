@@ -70,4 +70,55 @@ public class SetNotesCommandTests(PostgresFixture postgres)
 
         Assert.IsType<TimingBehavior<SetNotesCommand, UserMovieDataDto?>>(Assert.Single(behaviors));
     }
+
+    // Решение 3.12: заметка до 500 символов включительно
+    [Fact]
+    public async Task Send_ExactlyMaxLength_IsAccepted()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var movieId = await db.AddMovieAsync("Дюна");
+        var notes = new string('я', 500);
+        await using var provider = CommandTestProvider.Build(db);
+        using var scope = provider.CreateScope();
+
+        var result = await scope.ServiceProvider.GetRequiredService<IMediator>().Send(new SetNotesCommand(movieId, userId, notes));
+
+        Assert.Equal(notes, result?.Notes);
+        Assert.Equal(notes, (await db.GetUserDataAsync(userId, movieId))?.Notes);
+    }
+
+    // Слишком длинную заметку не обрезаем и не пишем частично: прежняя остаётся как была
+    [Fact]
+    public async Task Send_TooLongNotes_KeepsPreviousNotes()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var movieId = await db.AddMovieAsync("Дюна");
+        await db.AddUserDataAsync(userId, movieId, Status.NotWatched, notes: "прежняя заметка");
+        await using var provider = CommandTestProvider.Build(db);
+        using var scope = provider.CreateScope();
+
+        await Assert.ThrowsAsync<InvalidNotesException>(() =>
+            scope.ServiceProvider.GetRequiredService<IMediator>().Send(new SetNotesCommand(movieId, userId, new string('я', 501))));
+
+        Assert.Equal("прежняя заметка", (await db.GetUserDataAsync(userId, movieId))?.Notes);
+    }
+
+    // Порядок проверок: сначала «фильм и пользователь есть» (null, то есть 404 в эндпоинте), потом длина (ошибка, то есть 400).
+    // Поменять их местами значит сменить ответ клиенту: вместо 404 придёт 400
+    [Fact]
+    public async Task Send_UnknownMovieOrUserAndTooLongNotes_ReturnsNullNotException()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var movieId = await db.AddMovieAsync("Дюна");
+        await using var provider = CommandTestProvider.Build(db);
+        using var scope = provider.CreateScope();
+        var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+        var tooLong = new string('a', 501);
+
+        Assert.Null(await mediator.Send(new SetNotesCommand(9999, userId, tooLong)));
+        Assert.Null(await mediator.Send(new SetNotesCommand(movieId, 9999, tooLong)));
+    }
 }
