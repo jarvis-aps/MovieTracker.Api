@@ -1,27 +1,32 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using MovieTracker.Api.Exceptions;
+using MovieTracker.Api.Mediator;
 using MovieTracker.Api.Models;
 using MovieTracker.Api.Queries;
 using MovieTracker.Api.Services;
 
 namespace MovieTracker.Api.Tests;
 
+// Расчёт страницы каталога (фильтры, сортировки, границы page и pageSize, totalCount, личный вид пользователя) через mediator
+// на настоящем DI и Postgres. Раньше эти тесты вызывали MovieService.GetMoviesAsync напрямую
 [Collection(PostgresCollection.Name)]
-public class MovieServiceTests(PostgresFixture postgres)
+public class GetMoviesTests(PostgresFixture postgres)
 {
-    // Как в приложении: один контекст на запрос, и настоящий watchlist-сервис работает на том же контексте
-    private static MovieService CreateService(TestDatabase db)
+    // Как в приложении: запрос уходит через mediator (с замером), один контекст (scope) на вызов, настоящий watchlist-сервис на том же контексте
+    private static async Task<MoviesPage> GetPageAsync(TestDatabase db, GetMoviesQuery query)
     {
-        var context = db.NewContext();
-        return new MovieService(context, NullLogger<MovieService>.Instance, new WatchlistService(context, NullLogger<WatchlistService>.Instance));
+        await using var provider = MediatorTestProvider.Build(db);
+        using var scope = provider.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<IMediator>().Send(query);
     }
 
     // page и pageSize, которые тест не передал, остаются теми, что записаны в самом запросе (1 и 100): дефолты здесь не дублируются,
     // иначе тесты «без pageSize — сто фильмов» проверяли бы копию, а не настоящий дефолт
     private static GetMoviesQuery Query(int userId, Status? status = null, SortBy? sortBy = null, bool? sortByDesc = null,
-        int? page = null, int? pageSize = null, string? searchPart = null, bool? inWatchlist = null)
+        int? page = null, int? pageSize = null, string? searchPart = null, bool? inWatchlist = null, int? genreId = null)
     {
-        var query = new GetMoviesQuery(userId, status, SortBy: sortBy, SortByDesc: sortByDesc, SearchPart: searchPart, InWatchlist: inWatchlist);
+        var query = new GetMoviesQuery(userId, status, GenreId: genreId, SortBy: sortBy, SortByDesc: sortByDesc, SearchPart: searchPart, InWatchlist: inWatchlist);
 
         if (page is { } p)
             query = query with { Page = p };
@@ -44,7 +49,7 @@ public class MovieServiceTests(PostgresFixture postgres)
         var userId = await db.AddUserAsync();
 
         await Assert.ThrowsAsync<InvalidPageSizeException>(() =>
-            CreateService(db).GetMoviesAsync(Query(userId, page: page, pageSize: pageSize)));
+            GetPageAsync(db, Query(userId, page: page, pageSize: pageSize)));
     }
 
     // Решение 3.12 (число пересмотрено в 3.13): pageSize больше 100 заменяется на 100 (ошибки нет); не больше 100 остаётся
@@ -60,7 +65,7 @@ public class MovieServiceTests(PostgresFixture postgres)
         var userId = await db.AddUserAsync();
         await db.AddMoviesAsync("Одинаковое название", count: 150);
 
-        var result = (await CreateService(db).GetMoviesAsync(Query(userId, pageSize: pageSize))).Items;
+        var result = (await GetPageAsync(db, Query(userId, pageSize: pageSize))).Items;
 
         Assert.Equal(expectedCount, result.Count);
     }
@@ -73,7 +78,7 @@ public class MovieServiceTests(PostgresFixture postgres)
         var userId = await db.AddUserAsync();
         await db.AddMoviesAsync("Одинаковое название", count: 150);
 
-        var result = (await CreateService(db).GetMoviesAsync(Query(userId))).Items;
+        var result = (await GetPageAsync(db, Query(userId))).Items;
 
         Assert.Equal(100, result.Count);
     }
@@ -86,8 +91,8 @@ public class MovieServiceTests(PostgresFixture postgres)
         var userId = await db.AddUserAsync();
         var expected = await db.AddMoviesAsync("Одинаковое название", count: 150);
 
-        var first = (await CreateService(db).GetMoviesAsync(Query(userId, page: 1, pageSize: 1000))).Items;
-        var second = (await CreateService(db).GetMoviesAsync(Query(userId, page: 2, pageSize: 1000))).Items;
+        var first = (await GetPageAsync(db, Query(userId, page: 1, pageSize: 1000))).Items;
+        var second = (await GetPageAsync(db, Query(userId, page: 2, pageSize: 1000))).Items;
 
         Assert.Equal(expected.Order().Take(100), first.Select(m => m.Id));
         Assert.Equal(expected.Order().Skip(100), second.Select(m => m.Id));
@@ -111,7 +116,7 @@ public class MovieServiceTests(PostgresFixture postgres)
         var userId = await db.AddUserAsync();
         await db.AddMoviesAsync("Одинаковое название", count: 5);
 
-        var result = await CreateService(db).GetMoviesAsync(Query(userId, page: page, pageSize: 10));
+        var result = await GetPageAsync(db, Query(userId, page: page, pageSize: 10));
 
         Assert.Empty(result.Items);
         Assert.Equal(5, result.TotalCount);
@@ -123,7 +128,7 @@ public class MovieServiceTests(PostgresFixture postgres)
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
 
-        var result = await CreateService(db).GetMoviesAsync(Query(userId));
+        var result = await GetPageAsync(db, Query(userId));
 
         Assert.Empty(result.Items);
         Assert.Equal(0, result.TotalCount);
@@ -137,8 +142,8 @@ public class MovieServiceTests(PostgresFixture postgres)
         var userId = await db.AddUserAsync();
         await db.AddMoviesAsync("Одинаковое название", count: 150);
 
-        var small = await CreateService(db).GetMoviesAsync(Query(userId, pageSize: 10));
-        var defaultSize = await CreateService(db).GetMoviesAsync(Query(userId));
+        var small = await GetPageAsync(db, Query(userId, pageSize: 10));
+        var defaultSize = await GetPageAsync(db, Query(userId));
 
         Assert.Equal(10, small.Items.Count);
         Assert.Equal(150, small.TotalCount);
@@ -161,12 +166,12 @@ public class MovieServiceTests(PostgresFixture postgres)
         await db.AddUserDataAsync(alice, matrix, Status.Watched);
         await db.AddToWatchlistAsync(alice, matrix);
 
-        var all = await CreateService(db).GetMoviesAsync(Query(alice));
-        var watched = await CreateService(db).GetMoviesAsync(Query(alice, status: Status.Watched));
-        var search = await CreateService(db).GetMoviesAsync(Query(alice, searchPart: "дюн"));
-        var inWatchlist = await CreateService(db).GetMoviesAsync(Query(alice, inWatchlist: true));
-        var watchedOnePerPage = await CreateService(db).GetMoviesAsync(Query(alice, status: Status.Watched, pageSize: 1));
-        var bobWatched = await CreateService(db).GetMoviesAsync(Query(bob, status: Status.Watched));
+        var all = await GetPageAsync(db, Query(alice));
+        var watched = await GetPageAsync(db, Query(alice, status: Status.Watched));
+        var search = await GetPageAsync(db, Query(alice, searchPart: "дюн"));
+        var inWatchlist = await GetPageAsync(db, Query(alice, inWatchlist: true));
+        var watchedOnePerPage = await GetPageAsync(db, Query(alice, status: Status.Watched, pageSize: 1));
+        var bobWatched = await GetPageAsync(db, Query(bob, status: Status.Watched));
 
         Assert.Equal(3, all.TotalCount);
         Assert.Equal(2, watched.TotalCount);
@@ -185,9 +190,9 @@ public class MovieServiceTests(PostgresFixture postgres)
         var userId = await db.AddUserAsync();
         var expected = (await db.AddMoviesAsync("Одинаковое название", count: 2000)).Order().ToList();
 
-        var secondToLast = await CreateService(db).GetMoviesAsync(Query(userId, page: 19, pageSize: 100));
-        var last = await CreateService(db).GetMoviesAsync(Query(userId, page: 20, pageSize: 100));
-        var beyond = await CreateService(db).GetMoviesAsync(Query(userId, page: 21, pageSize: 100));
+        var secondToLast = await GetPageAsync(db, Query(userId, page: 19, pageSize: 100));
+        var last = await GetPageAsync(db, Query(userId, page: 20, pageSize: 100));
+        var beyond = await GetPageAsync(db, Query(userId, page: 21, pageSize: 100));
 
         Assert.Equal(expected.Skip(1800).Take(100), secondToLast.Items.Select(m => m.Id));
         Assert.Equal(2000, secondToLast.TotalCount);
@@ -207,9 +212,9 @@ public class MovieServiceTests(PostgresFixture postgres)
         var watched = await db.AddMovieAsync("Просмотрен");
         await db.AddUserDataAsync(userId, watched, Status.Watched, rating: 8);
 
-        var all = (await CreateService(db).GetMoviesAsync(Query(userId))).Items;
-        var notWatched = (await CreateService(db).GetMoviesAsync(Query(userId, status: Status.NotWatched))).Items;
-        var onlyWatched = (await CreateService(db).GetMoviesAsync(Query(userId, status: Status.Watched))).Items;
+        var all = (await GetPageAsync(db, Query(userId))).Items;
+        var notWatched = (await GetPageAsync(db, Query(userId, status: Status.NotWatched))).Items;
+        var onlyWatched = (await GetPageAsync(db, Query(userId, status: Status.Watched))).Items;
 
         var untouchedDto = Assert.Single(all, m => m.Id == untouched);
         Assert.Equal(Status.NotWatched, untouchedDto.status);
@@ -227,7 +232,7 @@ public class MovieServiceTests(PostgresFixture postgres)
         var movieId = await db.AddMovieAsync("Дюна");
         await db.AddUserDataAsync(alice, movieId, Status.Watched, rating: 9);
 
-        var bobsView = Assert.Single((await CreateService(db).GetMoviesAsync(Query(bob))).Items);
+        var bobsView = Assert.Single((await GetPageAsync(db, Query(bob))).Items);
 
         Assert.Equal(Status.NotWatched, bobsView.status);
         Assert.Null(bobsView.rating);
@@ -246,9 +251,9 @@ public class MovieServiceTests(PostgresFixture postgres)
         await db.AddUserDataAsync(alice, movieId, Status.Watched, notes: "заметка Алисы");
         await db.AddUserDataAsync(bob, movieId, Status.Watching, notes: "заметка Боба");
 
-        var alicesView = Assert.Single((await CreateService(db).GetMoviesAsync(Query(alice))).Items);
-        var bobsView = Assert.Single((await CreateService(db).GetMoviesAsync(Query(bob))).Items);
-        var carolsView = Assert.Single((await CreateService(db).GetMoviesAsync(Query(carol))).Items);
+        var alicesView = Assert.Single((await GetPageAsync(db, Query(alice))).Items);
+        var bobsView = Assert.Single((await GetPageAsync(db, Query(bob))).Items);
+        var carolsView = Assert.Single((await GetPageAsync(db, Query(carol))).Items);
 
         Assert.Equal("заметка Алисы", alicesView.Notes);
         Assert.Equal("заметка Боба", bobsView.Notes);
@@ -269,7 +274,7 @@ public class MovieServiceTests(PostgresFixture postgres)
         var dune = await db.AddMovieAsync("Дюна");
         await db.AddMovieAsync("Матрица");
 
-        var result = (await CreateService(db).GetMoviesAsync(Query(userId, searchPart: searchPart))).Items;
+        var result = (await GetPageAsync(db, Query(userId, searchPart: searchPart))).Items;
 
         Assert.Equal([dune], result.Select(m => m.Id));
     }
@@ -284,10 +289,10 @@ public class MovieServiceTests(PostgresFixture postgres)
         var notInList = await db.AddMovieAsync("Не в списке");
         await db.AddToWatchlistAsync(alice, inList);
 
-        var all = (await CreateService(db).GetMoviesAsync(Query(alice))).Items;
-        var onlyIn = (await CreateService(db).GetMoviesAsync(Query(alice, inWatchlist: true))).Items;
-        var onlyOut = (await CreateService(db).GetMoviesAsync(Query(alice, inWatchlist: false))).Items;
-        var bobsView = (await CreateService(db).GetMoviesAsync(Query(bob))).Items;
+        var all = (await GetPageAsync(db, Query(alice))).Items;
+        var onlyIn = (await GetPageAsync(db, Query(alice, inWatchlist: true))).Items;
+        var onlyOut = (await GetPageAsync(db, Query(alice, inWatchlist: false))).Items;
+        var bobsView = (await GetPageAsync(db, Query(bob))).Items;
 
         Assert.Equal(2, all.Count);
         Assert.Equal([inList], onlyIn.Select(m => m.Id));
@@ -296,20 +301,21 @@ public class MovieServiceTests(PostgresFixture postgres)
     }
 
     // Граница Movies/Watchlist: в таблице WatchlistItems пусто, а подставной reader говорит «фильм в списке».
-    // Флаг истинен — значит, MovieService берёт watchlist только через интерфейс
+    // Флаг истинен — значит, handler запроса берёт watchlist только через интерфейс. Handler создаётся напрямую, без mediator:
+    // нужно подставить свою реализацию IWatchlistReader
     [Fact]
-    public async Task MovieService_TakesWatchlistFromReader_NotFromTable()
+    public async Task GetMoviesHandler_TakesWatchlistFromReader_NotFromTable()
     {
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
         var inList = await db.AddMovieAsync("В списке по мнению reader");
         await db.AddMovieAsync("Не в списке");
 
-        MovieService CreateWithFakeReader() =>
-            new(db.NewContext(), NullLogger<MovieService>.Instance, new FakeWatchlistReader(inList));
+        GetMoviesHandler CreateWithFakeReader() =>
+            new(db.NewContext(), NullLogger<GetMoviesHandler>.Instance, new FakeWatchlistReader(inList));
 
-        var all = (await CreateWithFakeReader().GetMoviesAsync(Query(userId))).Items;
-        var onlyIn = (await CreateWithFakeReader().GetMoviesAsync(Query(userId, inWatchlist: true))).Items;
+        var all = (await CreateWithFakeReader().Handle(Query(userId))).Items;
+        var onlyIn = (await CreateWithFakeReader().Handle(Query(userId, inWatchlist: true))).Items;
 
         Assert.Equal([inList], all.Where(m => m.InWatchlist).Select(m => m.Id));
         Assert.Equal([inList], onlyIn.Select(m => m.Id));
@@ -318,6 +324,31 @@ public class MovieServiceTests(PostgresFixture postgres)
     private class FakeWatchlistReader(params int[] movieIds) : IWatchlistReader
     {
         public Task<HashSet<int>> GetMovieIdsAsync(int userId) => Task.FromResult(movieIds.ToHashSet());
+    }
+
+    // Фильтр по жанру: остаются фильмы, у которых этот жанр есть среди жанров, и totalCount считается под тем же фильтром.
+    // Остальные жанры такого фильма в ответе не прячутся. В тестах этот параметр раньше не передавался вообще
+    // (мутация «фильтр по жанру убран» выжила), поэтому тест добавлен вместе с переносом логики в handler
+    [Fact]
+    public async Task GetMoviesAsync_GenreFilter_KeepsOnlyMoviesOfThatGenreAndCountsThem()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var action = await db.AddGenreAsync("Action");
+        var comedy = await db.AddGenreAsync("Comedy");
+        var onlyAction = await db.AddMovieWithGenresAsync("Только боевик", action);
+        var both = await db.AddMovieWithGenresAsync("Боевик и комедия", action, comedy);
+        await db.AddMovieWithGenresAsync("Только комедия", comedy);
+        await db.AddMovieAsync("Без жанров");
+
+        var actionPage = await GetPageAsync(db, Query(userId, genreId: action));
+        var unknownPage = await GetPageAsync(db, Query(userId, genreId: 9999));
+
+        Assert.Equal(new[] { onlyAction, both }.Order(), actionPage.Items.Select(m => m.Id).Order());
+        Assert.Equal(2, actionPage.TotalCount);
+        Assert.Equal([action, comedy], actionPage.Items.Single(m => m.Id == both).Genres.Select(g => g.Id).Order());
+        Assert.Empty(unknownPage.Items);
+        Assert.Equal(0, unknownPage.TotalCount);
     }
 
     // ---------- сортировка и пагинация ----------
@@ -342,7 +373,7 @@ public class MovieServiceTests(PostgresFixture postgres)
         var seen = new List<int>();
         for (var page = 1; page <= 12; page++)
         {
-            var result = (await CreateService(db).GetMoviesAsync(Query(userId, sortBy: sortBy, sortByDesc: desc, page: page, pageSize: 10))).Items;
+            var result = (await GetPageAsync(db, Query(userId, sortBy: sortBy, sortByDesc: desc, page: page, pageSize: 10))).Items;
             seen.AddRange(result.Select(m => m.Id));
         }
 
@@ -363,7 +394,7 @@ public class MovieServiceTests(PostgresFixture postgres)
         await db.AddUserDataAsync(userId, low, Status.Watched, rating: 4);
         await db.AddUserDataAsync(userId, high, Status.Watched, rating: 9);
 
-        var result = (await CreateService(db).GetMoviesAsync(Query(userId, sortBy: SortBy.Rating, sortByDesc: desc))).Items;
+        var result = (await GetPageAsync(db, Query(userId, sortBy: SortBy.Rating, sortByDesc: desc))).Items;
 
         Assert.Equal(expectedRatedOrder, result.Take(2).Select(m => m.rating!.Value));
         Assert.Equal(noRating, result[2].Id);

@@ -30,7 +30,7 @@ public class UserMovieDataTests(PostgresFixture postgres)
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
 
         await using var winner = await db.InsertUserDataWithoutCommitAsync(userId, movieId, Status.Watched);
         var loser = SendAsync(provider, new SetRatingCommand(movieId, userId, 7));
@@ -54,7 +54,7 @@ public class UserMovieDataTests(PostgresFixture postgres)
     {
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
 
         for (var round = 0; round < Rounds; round++)
         {
@@ -78,7 +78,7 @@ public class UserMovieDataTests(PostgresFixture postgres)
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
         await db.AddUserDataAsync(userId, movieId, Status.Watched, rating: 8);
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
 
         var result = await SendAsync(provider, new SetNotesCommand(movieId, userId, "заметка"));
 
@@ -93,7 +93,7 @@ public class UserMovieDataTests(PostgresFixture postgres)
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
         await db.AddUserDataAsync(userId, movieId, Status.NotWatched, notes: "посмотреть с друзьями");
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
 
         var afterStatus = await SendAsync(provider, new SetStatusCommand(movieId, userId, Status.Watched));
         var afterRating = await SendAsync(provider, new SetRatingCommand(movieId, userId, 8));
@@ -110,7 +110,7 @@ public class UserMovieDataTests(PostgresFixture postgres)
         var bob = await db.AddUserAsync("bob");
         var movieId = await db.AddMovieAsync("Дюна");
         await db.AddUserDataAsync(alice, movieId, Status.Watched, rating: 9);
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
 
         var bobsResult = await SendAsync(provider, new SetStatusCommand(movieId, bob, Status.Watching));
 

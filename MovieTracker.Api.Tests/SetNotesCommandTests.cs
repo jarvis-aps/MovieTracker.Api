@@ -16,7 +16,7 @@ public class SetNotesCommandTests(PostgresFixture postgres)
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
 
         var result = await scope.ServiceProvider.GetRequiredService<IMediator>()
@@ -33,7 +33,7 @@ public class SetNotesCommandTests(PostgresFixture postgres)
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
@@ -49,7 +49,7 @@ public class SetNotesCommandTests(PostgresFixture postgres)
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
 
         await Assert.ThrowsAsync<InvalidNotesException>(() =>
@@ -63,7 +63,7 @@ public class SetNotesCommandTests(PostgresFixture postgres)
     public async Task AddMediator_ConnectsTimingBehaviorToNotesCommand()
     {
         var db = await postgres.CreateDatabaseAsync();
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
 
         var behaviors = scope.ServiceProvider.GetServices<IPipelineBehavior<SetNotesCommand, UserMovieDataDto?>>();
@@ -79,7 +79,7 @@ public class SetNotesCommandTests(PostgresFixture postgres)
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
         var notes = new string('я', 500);
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
 
         var result = await scope.ServiceProvider.GetRequiredService<IMediator>().Send(new SetNotesCommand(movieId, userId, notes));
@@ -96,7 +96,7 @@ public class SetNotesCommandTests(PostgresFixture postgres)
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
         await db.AddUserDataAsync(userId, movieId, Status.NotWatched, notes: "прежняя заметка");
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
 
         await Assert.ThrowsAsync<InvalidNotesException>(() =>
@@ -113,7 +113,7 @@ public class SetNotesCommandTests(PostgresFixture postgres)
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
         var tooLong = new string('a', 501);

@@ -88,6 +88,31 @@ public class TestDatabase(string connectionString)
         return movie.Id;
     }
 
+    // Фильм сразу с жанрами (id уже существующих жанров)
+    public async Task<int> AddMovieWithGenresAsync(string title, params int[] genreIds)
+    {
+        await using var context = NewContext();
+        var movie = new Movie(title, 2000) { Genres = await context.Genres.Where(g => genreIds.Contains(g.Id)).ToListAsync() };
+        context.Movies.Add(movie);
+        await context.SaveChangesAsync();
+        return movie.Id;
+    }
+
+    public async Task<int> AddGenreAsync(string name)
+    {
+        await using var context = NewContext();
+        var genre = new Genre(name);
+        context.Genres.Add(genre);
+        await context.SaveChangesAsync();
+        return genre.Id;
+    }
+
+    public async Task<int> CountMoviesAsync(string title)
+    {
+        await using var context = NewContext();
+        return await context.Movies.CountAsync(m => m.Title == title);
+    }
+
     // Много фильмов одним SaveChanges — для тестов, которым нужен объём, а не разные данные
     public async Task<List<int>> AddMoviesAsync(string title, int count)
     {

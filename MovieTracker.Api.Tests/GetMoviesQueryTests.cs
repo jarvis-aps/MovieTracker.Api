@@ -1,32 +1,17 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using MovieTracker.Api.Exceptions;
 using MovieTracker.Api.Mediator;
 using MovieTracker.Api.Models;
 using MovieTracker.Api.Queries;
-using MovieTracker.Api.Services;
 
 namespace MovieTracker.Api.Tests;
 
-// Запрос целиком: настоящий mediator, handler найден сканированием сборки (AddMediator) и настоящий Postgres.
-// Сам расчёт страницы (фильтры, сортировки, границы) проверяют MovieServiceTests; здесь — что запрос проходит через mediator
+// Запрос целиком: настоящий mediator, handler найден сканированием сборки (AddMediator) и настоящий Postgres (см. MediatorTestProvider).
+// Сам расчёт страницы (фильтры, сортировки, границы) проверяют GetMoviesTests; здесь — что запрос проходит через mediator
 [Collection(PostgresCollection.Name)]
 public class GetMoviesQueryTests(PostgresFixture postgres)
 {
-    // Как в приложении: один контекст на запрос (scope), watchlist отдаётся MovieService через интерфейс
-    private static ServiceProvider BuildProvider(TestDatabase db)
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
-        services.AddScoped(_ => db.NewContext());
-        services.AddScoped<WatchlistService>();
-        services.AddScoped<IWatchlistReader>(provider => provider.GetRequiredService<WatchlistService>());
-        services.AddScoped<MovieService>();
-        services.AddMediator(typeof(GetMoviesHandler).Assembly);
-
-        return services.BuildServiceProvider();
-    }
+    private static ServiceProvider BuildProvider(TestDatabase db) => MediatorTestProvider.Build(db);
 
     [Fact]
     public async Task Send_ReturnsPersonalPageAndTotalCount()

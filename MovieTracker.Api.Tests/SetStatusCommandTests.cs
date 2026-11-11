@@ -5,7 +5,7 @@ using MovieTracker.Api.Models;
 
 namespace MovieTracker.Api.Tests;
 
-// Команда целиком: настоящий mediator, handler'ы найдены сканированием сборки (AddMediator) и настоящий Postgres (см. CommandTestProvider).
+// Команда целиком: настоящий mediator, handler'ы найдены сканированием сборки (AddMediator) и настоящий Postgres (см. MediatorTestProvider).
 // Так проверяется и регистрация: если handler не найден или не подключён замер, тест упадёт
 [Collection(PostgresCollection.Name)]
 public class SetStatusCommandTests(PostgresFixture postgres)
@@ -16,7 +16,7 @@ public class SetStatusCommandTests(PostgresFixture postgres)
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
 
         var result = await scope.ServiceProvider.GetRequiredService<IMediator>()
@@ -33,7 +33,7 @@ public class SetStatusCommandTests(PostgresFixture postgres)
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
@@ -47,7 +47,7 @@ public class SetStatusCommandTests(PostgresFixture postgres)
     public async Task AddMediator_ConnectsTimingBehaviorToCommands()
     {
         var db = await postgres.CreateDatabaseAsync();
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
 
         var behaviors = scope.ServiceProvider.GetServices<IPipelineBehavior<SetStatusCommand, UserMovieDataDto?>>();
@@ -62,7 +62,7 @@ public class SetStatusCommandTests(PostgresFixture postgres)
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
 
         // каждый вызов в своём scope, как два отдельных запроса
         using var firstScope = provider.CreateScope();

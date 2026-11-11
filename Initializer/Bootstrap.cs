@@ -25,11 +25,10 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddScoped<MovieService>();
 // Механика записи личных данных для handler'ов команд статуса, заметки и оценки (handler'ы находит AddMediator, помощника регистрируем сами)
 builder.Services.AddScoped<UserMovieDataWriter>();
 builder.Services.AddScoped<WatchlistService>();
-// MovieService получает watchlist только через интерфейс; пересылка на тот же WatchlistService, чтобы на запрос был один экземпляр
+// GetMoviesHandler получает watchlist только через интерфейс; пересылка на тот же WatchlistService, чтобы на запрос был один экземпляр
 builder.Services.AddScoped<IWatchlistReader>(services => services.GetRequiredService<WatchlistService>());
 // Mediator, handler'ы команд и запросов (по сборке) и сквозные поведения вокруг них (замер времени)
 builder.Services.AddMediator(typeof(Program).Assembly);
@@ -145,14 +144,15 @@ app.MapPatch("/movies/{id}/rating", async (int id, int userId, float rating, IMe
     return result is null ? Results.NotFound() : Results.Ok(result);
 });
 
-// POST /movies   тело JSON: { "title", "year", "genresId": [1, 2], "status", "notes" }
+// POST /movies   тело JSON: { "title", "year", "genresId": [1, 2] }
 // Что делает: добавляет фильм в общий каталог (не в личные данные). Жанры берутся по id, несуществующие id молча пропускаются.
-//   Поля status и notes из тела сейчас не используются: личные данные пишутся только через PATCH.
+//   Личные данные (статус, оценка, заметка) пишутся только через PATCH; лишние поля в теле (в том числе прежние status и notes) игнорируются.
 // Что отдаёт: 201, заголовок Location: /movies/{id} (отдельного GET по id пока нет) и MovieDto нового фильма
 //   (оценка, статус и заметка — null, inWatchlist — false). 400 без тела — фильм с таким названием уже есть.
-app.MapPost("/movies", async (MovieService service, NewMovie newMovie) =>
+// Тело биндится прямо в неизменяемую команду CreateMovieCommand, дальше её обрабатывает mediator.
+app.MapPost("/movies", async (CreateMovieCommand command, IMediator mediator) =>
 {
-    var result = await service.CreateMovieAsync(newMovie);
+    var result = await mediator.Send(command);
     return result is null ? Results.BadRequest() : Results.Created($"/movies/{result.Id}", result);
 });
 

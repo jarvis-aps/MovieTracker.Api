@@ -16,7 +16,7 @@ public class SetRatingCommandTests(PostgresFixture postgres)
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
 
         var result = await scope.ServiceProvider.GetRequiredService<IMediator>()
@@ -33,7 +33,7 @@ public class SetRatingCommandTests(PostgresFixture postgres)
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
@@ -52,7 +52,7 @@ public class SetRatingCommandTests(PostgresFixture postgres)
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
 
         await Assert.ThrowsAsync<InvalidRatingException>(() =>
@@ -66,7 +66,7 @@ public class SetRatingCommandTests(PostgresFixture postgres)
     public async Task AddMediator_ConnectsTimingBehaviorToRatingCommand()
     {
         var db = await postgres.CreateDatabaseAsync();
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
 
         var behaviors = scope.ServiceProvider.GetServices<IPipelineBehavior<SetRatingCommand, UserMovieDataDto?>>();
@@ -83,7 +83,7 @@ public class SetRatingCommandTests(PostgresFixture postgres)
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
 
         var result = await scope.ServiceProvider.GetRequiredService<IMediator>().Send(new SetRatingCommand(movieId, userId, rating));
@@ -101,7 +101,7 @@ public class SetRatingCommandTests(PostgresFixture postgres)
         var db = await postgres.CreateDatabaseAsync();
         var userId = await db.AddUserAsync();
         var movieId = await db.AddMovieAsync("Дюна");
-        await using var provider = CommandTestProvider.Build(db);
+        await using var provider = MediatorTestProvider.Build(db);
         using var scope = provider.CreateScope();
         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
