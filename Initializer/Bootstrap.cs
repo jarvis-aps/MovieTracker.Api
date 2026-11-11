@@ -108,13 +108,13 @@ app.MapPatch("/movies/{id}/status", async (int id, int userId, Status status, IM
 // Что делает: записывает пользователю заметку к фильму, заменяя прежнюю. Если личной записи ещё нет — создаёт её со статусом NotWatched.
 // Что отдаёт: 200 и личную запись UserMovieDataDto (с заметкой); 404 — нет такого фильма или пользователя;
 //   400 — заметка длиннее 500 символов (текст ошибки в теле, заметка не обрезается и не сохраняется).
-app.MapPatch("/movies/{id}/notes", async (int id, int userId, string notes, UserMovieDataService service) =>
+app.MapPatch("/movies/{id}/notes", async (int id, int userId, string notes, IMediator mediator) =>
 {
     UserMovieDataDto? result;
 
     try
     {
-        result = await service.UpdateNotesAsync(id, userId, notes);
+        result = await mediator.Send(new SetNotesCommand(id, userId, notes));
     }
     catch (InvalidNotesException exception)
     {
@@ -128,13 +128,13 @@ app.MapPatch("/movies/{id}/notes", async (int id, int userId, string notes, User
 // Что делает: ставит пользователю оценку фильма. Если личной записи ещё нет — создаёт её со статусом NotWatched.
 // Что отдаёт: 200 и личную запись UserMovieDataDto (с оценкой); 404 — нет такого фильма или пользователя;
 //   400 — оценка вне диапазона 0–10 (текст ошибки в теле).
-app.MapPatch("/movies/{id}/rating", async (int id, int userId, float rating, UserMovieDataService service) =>
+app.MapPatch("/movies/{id}/rating", async (int id, int userId, float rating, IMediator mediator) =>
 {
     UserMovieDataDto? result;
-    
+
     try
     {
-        result = await service.UpdateRatingAsync(id, userId, rating);
+        result = await mediator.Send(new SetRatingCommand(id, userId, rating));
     }
     catch (InvalidRatingException exception)
     {
