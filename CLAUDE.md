@@ -64,7 +64,7 @@ docker exec -it movietracker-db psql -U movietracker -d movietracker
 
 ## Архитектура
 
-Этап 1 закрыт, этап 3 в работе (см. `PROJECT_BRIEF.md`). Структура бэкенда:
+Этап 1 закрыт, этап 3 в работе (см. `PROJECT_BRIEF.md`). Схема реализации CQRS (путь запроса от клиента через mediator и handler до базы, Mermaid) лежит в `CQRS_DIAGRAM.md`; она составлена вручную, при изменении архитектуры её нужно обновлять. Структура бэкенда:
 
 ```
 Initializer/         # Bootstrap.cs (бывший Program.cs, переименован и перенесён пользователем в задаче 3.2 — "всё для запуска приложения в одном месте") — точка входа + все Minimal API endpoints инлайн, без Main-класса; MovieTrackerDbContext.cs — DbContext, лежит здесь же по той же идее, не в отдельной Data/
