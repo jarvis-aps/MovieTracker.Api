@@ -107,6 +107,12 @@ public class TestDatabase(string connectionString)
         return genre.Id;
     }
 
+    public async Task<int> CountAllMoviesAsync()
+    {
+        await using var context = NewContext();
+        return await context.Movies.CountAsync();
+    }
+
     public async Task<int> CountMoviesAsync(string title)
     {
         await using var context = NewContext();

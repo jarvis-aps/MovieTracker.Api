@@ -19,9 +19,15 @@ public class MovieTrackerDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Решение 3.20: фильм уникален по паре (название, год), ремейки с тем же названием допустимы. Гарантию даёт индекс,
-        // а не проверка в коде: два одновременных POST с одной парой иначе оба проходили проверку и создавали дубликат
+        // а не проверка в коде: два одновременных POST с одной парой иначе оба проходили проверку и создавали дубликат.
+        // Решение 3.21: название сравнивается без учёта регистра и пробелов по краям. Ключ lower(btrim(Title)) считает сама база
+        // (вычисляемая колонка, хранится), Title остаётся таким, как ввёл пользователь; btrim убирает только пробелы
         modelBuilder.Entity<Movie>()
-            .HasIndex(m => new { m.Title, m.Year })
+            .Property(m => m.TitleKey)
+            .HasComputedColumnSql("lower(btrim(\"Title\"))", stored: true);
+
+        modelBuilder.Entity<Movie>()
+            .HasIndex(m => new { m.TitleKey, m.Year })
             .IsUnique();
 
         modelBuilder.Entity<UserMovieData>()

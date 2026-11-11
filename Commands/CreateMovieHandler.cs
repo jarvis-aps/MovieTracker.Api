@@ -6,14 +6,15 @@ using Npgsql;
 
 namespace MovieTracker.Api.Commands;
 
-// Логика переехала сюда из MovieService.CreateMovieAsync (решение 3.19). Дубликатом считается пара (название, год), её уникальность
-// гарантирует индекс (решение 3.20). Не менялось и осталось известной особенностью: NullReferenceException (500) при отсутствии
-// genresId в теле, отсутствие проверки значений (пустое название, любой год)
+// Логика переехала сюда из MovieService.CreateMovieAsync (решение 3.19). Дубликатом считается фильм с тем же названием без учёта
+// регистра и пробелов по краям и тем же годом; уникальность гарантирует индекс по (TitleKey, Year), TitleKey считает база
+// (решения 3.20 и 3.21). Не менялось и осталось известной особенностью: NullReferenceException (500) при отсутствии genresId
+// в теле, отсутствие проверки значений (пустое название, любой год)
 public class CreateMovieHandler(MovieTrackerDbContext context) : IRequestHandler<CreateMovieCommand, MovieDto?>
 {
     // Имя индекса из OnModelCreating (EF называет его IX_{таблица}_{колонки}): по нему наш дубликат отличается от любого другого
     // нарушения уникальности, которое глотать нельзя
-    private const string TitleAndYearIndex = "IX_Movies_Title_Year";
+    private const string TitleKeyAndYearIndex = "IX_Movies_TitleKey_Year";
 
     public async Task<MovieDto?> Handle(CreateMovieCommand command)
     {
@@ -32,8 +33,12 @@ public class CreateMovieHandler(MovieTrackerDbContext context) : IRequestHandler
         movie.Genres = currentGenres;
 
         // Быстрый путь: очевидный дубликат отвечаем без попытки вставки. Гарантию даёт индекс ниже, а не эта проверка:
-        // два одновременных запроса с одной парой оба проходят её
-        if (await context.Movies.AnyAsync(m => m.Title == command.Title && m.Year == command.Year))
+        // два одновременных запроса с одной парой оба проходят её. Ключ считаем так же, как колонка TitleKey в базе (btrim убирает
+        // только пробелы, поэтому Trim(' ')); если C# и Postgres разойдутся на экзотическом символе, вставку остановит индекс.
+        // «?.»: без названия (null) запрос идёт дальше и падает на NOT NULL в базе, как и раньше
+        var titleKey = command.Title?.Trim(' ').ToLowerInvariant();
+
+        if (await context.Movies.AnyAsync(m => m.TitleKey == titleKey && m.Year == command.Year))
         {
             return null;
         }
@@ -46,10 +51,10 @@ public class CreateMovieHandler(MovieTrackerDbContext context) : IRequestHandler
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException
                                                   {
                                                       SqlState: PostgresErrorCodes.UniqueViolation,
-                                                      ConstraintName: TitleAndYearIndex
+                                                      ConstraintName: TitleKeyAndYearIndex
                                                   })
         {
-            // Проигравший в гонке: победитель уже подтвердил фильм с этой парой, и индекс отклонил нашу вставку. Для клиента это тот же дубликат
+            // Проигравший в гонке: победитель уже подтвердил фильм с этим ключом и годом, и индекс отклонил нашу вставку. Для клиента это тот же дубликат
             return null;
         }
 

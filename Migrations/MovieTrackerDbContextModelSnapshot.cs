@@ -66,12 +66,18 @@ namespace MovieTracker.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("TitleKey")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("text")
+                        .HasComputedColumnSql("lower(btrim(\"Title\"))", true);
+
                     b.Property<int>("Year")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Title", "Year")
+                    b.HasIndex("TitleKey", "Year")
                         .IsUnique();
 
                     b.ToTable("Movies");

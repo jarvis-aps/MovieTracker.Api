@@ -111,26 +111,82 @@ public class CreateMovieCommandTests(PostgresFixture postgres)
         Assert.Equal(1, await db.CountMoviesAsync("Дюна"));
     }
 
+    // Решение 3.21: названия сравниваются без учёта регистра и пробелов по краям. Дубликат, который отличается только этим,
+    // отвечает null, второй фильм не создаётся
+    [Theory]
+    [InlineData("матрица")]
+    [InlineData("МАТРИЦА")]
+    [InlineData("  Матрица  ")]
+    [InlineData(" матрица ")]
+    public async Task Send_TitleDifferingOnlyInCaseOrEdgeSpaces_IsDuplicate(string title)
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        await db.AddMovieAsync("Матрица", year: 1999);
+        await using var provider = MediatorTestProvider.Build(db);
+        using var scope = provider.CreateScope();
+
+        var result = await scope.ServiceProvider.GetRequiredService<IMediator>().Send(new CreateMovieCommand(title, 1999, []));
+
+        Assert.Null(result);
+        Assert.Equal(1, await db.CountAllMoviesAsync());
+    }
+
+    // Другой регистр при другом годе остаётся ремейком: ключ сравнивается вместе с годом
+    [Fact]
+    public async Task Send_SameNormalizedTitleDifferentYear_IsCreated()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        await db.AddMovieAsync("Матрица", year: 1999);
+        await using var provider = MediatorTestProvider.Build(db);
+        using var scope = provider.CreateScope();
+
+        var result = await scope.ServiceProvider.GetRequiredService<IMediator>().Send(new CreateMovieCommand("матрица", 2003, []));
+
+        Assert.NotNull(result);
+        Assert.Equal(2, await db.CountAllMoviesAsync());
+    }
+
+    // Границы правила (подтверждены пользователем): Ё и Е считаются разными буквами, двойной пробел внутри названия отличает его
+    // от названия с одним пробелом. Пробелы только по краям не в счёт
+    [Theory]
+    [InlineData("Ёлки", "Елки")]
+    [InlineData("Матрица Мир", "Матрица  Мир")]
+    public async Task Send_TitlesDifferingBeyondCaseAndEdgeSpaces_AreDifferentFilms(string existing, string title)
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        await db.AddMovieAsync(existing, year: 2000);
+        await using var provider = MediatorTestProvider.Build(db);
+        using var scope = provider.CreateScope();
+
+        var result = await scope.ServiceProvider.GetRequiredService<IMediator>().Send(new CreateMovieCommand(title, 2000, []));
+
+        Assert.NotNull(result);
+        Assert.Equal(2, await db.CountAllMoviesAsync());
+    }
+
     // Гонка двух одинаковых POST, воспроизведённая точно, а не случайно. «Победитель» вставил пару (название, год) и ещё не завершил
     // транзакцию: «проигравший» через mediator не видит эту строку, проходит проверку на дубликат, пытается вставить свою и встаёт
     // на уникальном индексе. Когда победитель завершается, индекс отклоняет вставку проигравшего, и handler обязан ответить null
-    // (как на обычный дубликат), а не упасть с ошибкой и не создать второй фильм
-    [Fact]
-    public async Task Send_LoserOfCreateRace_ReturnsNullAndCreatesNoDuplicate()
+    // (как на обычный дубликат), а не упасть с ошибкой и не создать второй фильм. Проигравший пишет название и в другом регистре:
+    // быстрая проверка неподтверждённую строку не видит в любом случае, значит нормализовать название обязан сам индекс
+    [Theory]
+    [InlineData("Матрица")]
+    [InlineData("МАТРИЦА ")]
+    public async Task Send_LoserOfCreateRace_ReturnsNullAndCreatesNoDuplicate(string loserTitle)
     {
         var db = await postgres.CreateDatabaseAsync();
         await using var provider = MediatorTestProvider.Build(db);
 
         await using var winner = await db.InsertMovieWithoutCommitAsync("Матрица", 1999);
         using var scope = provider.CreateScope();
-        var loser = scope.ServiceProvider.GetRequiredService<IMediator>().Send(new CreateMovieCommand("Матрица", 1999, []));
+        var loser = scope.ServiceProvider.GetRequiredService<IMediator>().Send(new CreateMovieCommand(loserTitle, 1999, []));
         await db.WaitUntilWriterIsBlockedAsync(loser);
 
         await winner.CommitAsync();
         var result = await loser;
 
         Assert.Null(result);
-        Assert.Equal(1, await db.CountMoviesAsync("Матрица"));
+        Assert.Equal(1, await db.CountAllMoviesAsync());
     }
 
     // Добавленный фильм виден в каталоге вместе со своими жанрами: чтение и запись видят одну базу
