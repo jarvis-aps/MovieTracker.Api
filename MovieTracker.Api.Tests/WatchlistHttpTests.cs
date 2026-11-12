@@ -2,7 +2,7 @@ using System.Net;
 
 namespace MovieTracker.Api.Tests;
 
-// PUT и DELETE /watchlist/{movieId} на уровне HTTP. Идемпотентность и гонки проверяют WatchlistServiceTests; здесь — коды ответов:
+// PUT и DELETE /watchlist/{movieId} на уровне HTTP. Идемпотентность и гонки проверяют AddToWatchlistCommandTests и RemoveFromWatchlistCommandTests; здесь — коды ответов:
 // 204 без тела (в том числе когда делать было нечего) и 404 для несуществующего фильма или пользователя
 [Collection(PostgresCollection.Name)]
 public class WatchlistHttpTests(PostgresFixture postgres)

@@ -27,9 +27,9 @@ builder.Services.AddCors(options =>
 
 // Механика записи личных данных для handler'ов команд статуса, заметки и оценки (handler'ы находит AddMediator, помощника регистрируем сами)
 builder.Services.AddScoped<UserMovieDataWriter>();
-builder.Services.AddScoped<WatchlistService>();
-// GetMoviesHandler получает watchlist только через интерфейс; пересылка на тот же WatchlistService, чтобы на запрос был один экземпляр
-builder.Services.AddScoped<IWatchlistReader>(services => services.GetRequiredService<WatchlistService>());
+// GetMoviesHandler получает watchlist только через интерфейс (граница Movies и Watchlist). Запись в watchlist делают handler'ы команд,
+// их находит AddMediator, поэтому отдельной регистрации записи нет
+builder.Services.AddScoped<IWatchlistReader, WatchlistReader>();
 // Время для правил, которые от него зависят (верхняя граница года в CreateMovieValidator); в тестах подменяется
 builder.Services.AddSingleton(TimeProvider.System);
 // Mediator, handler'ы команд и запросов и валидаторы (по сборке) и сквозные поведения вокруг них (замер времени, проверка)
@@ -174,18 +174,20 @@ app.MapPost("/movies", async (CreateMovieCommand command, IMediator mediator) =>
 // PUT /watchlist/{movieId}?userId=1
 // Что делает: кладёт фильм в список «Хочу посмотреть» пользователя. Идемпотентен: повторный или параллельный вызов не создаёт дубликат и не падает.
 // Что отдаёт: 204 без тела (в том числе если фильм уже был в списке); 404 — нет такого фильма или пользователя.
-app.MapPut("/watchlist/{movieId}", async (int movieId, int userId, WatchlistService service) =>
+// Команда AddToWatchlistCommand уходит в mediator, ответ true/false (нашёлся ли фильм и пользователь) эндпоинт переводит в 204/404.
+app.MapPut("/watchlist/{movieId}", async (int movieId, int userId, IMediator mediator) =>
 {
-    var found = await service.AddAsync(movieId, userId);
+    var found = await mediator.Send(new AddToWatchlistCommand(movieId, userId));
     return found ? Results.NoContent() : Results.NotFound();
 });
 
 // DELETE /watchlist/{movieId}?userId=1
 // Что делает: убирает фильм из списка «Хочу посмотреть» пользователя. Идемпотентен: если фильма там не было, это не ошибка.
 // Что отдаёт: 204 без тела; 404 — нет такого фильма или пользователя.
-app.MapDelete("/watchlist/{movieId}", async (int movieId, int userId, WatchlistService service) =>
+// Команда RemoveFromWatchlistCommand уходит в mediator, как и у PUT.
+app.MapDelete("/watchlist/{movieId}", async (int movieId, int userId, IMediator mediator) =>
 {
-    var found = await service.RemoveAsync(movieId, userId);
+    var found = await mediator.Send(new RemoveFromWatchlistCommand(movieId, userId));
     return found ? Results.NoContent() : Results.NotFound();
 });
 

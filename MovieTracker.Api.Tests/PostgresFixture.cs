@@ -197,6 +197,23 @@ public class TestDatabase(string connectionString)
         return new UncommittedInsert(connection, transaction);
     }
 
+    // То же для watchlist: вставляет пару (пользователь, фильм) в незавершённой транзакции; вторая вставка той же пары встанет на уникальном
+    // индексе (UserId, MovieId) и после CommitAsync получит нарушение уникальности, ровно как проигравший параллельный PUT
+    public async Task<UncommittedInsert> InsertWatchlistItemWithoutCommitAsync(int userId, int movieId)
+    {
+        var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        var transaction = await connection.BeginTransactionAsync();
+
+        await using var command = new NpgsqlCommand(
+            """INSERT INTO "WatchlistItems" ("UserId", "MovieId", "AddedAt") VALUES (@userId, @movieId, now())""", connection, transaction);
+        command.Parameters.AddWithValue("userId", userId);
+        command.Parameters.AddWithValue("movieId", movieId);
+        await command.ExecuteNonQueryAsync();
+
+        return new UncommittedInsert(connection, transaction);
+    }
+
     // То же для фильма: вставляет фильм (название, год) в незавершённой транзакции; вторая вставка той же пары встанет на уникальном
     // индексе (название, год) и после CommitAsync получит нарушение уникальности
     public async Task<UncommittedInsert> InsertMovieWithoutCommitAsync(string title, int year)

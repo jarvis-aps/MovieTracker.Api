@@ -19,8 +19,7 @@ internal static class MediatorTestProvider
         services.AddSingleton(TimeProvider.System);
         services.AddScoped(_ => db.NewContext());
         services.AddScoped<UserMovieDataWriter>();
-        services.AddScoped<WatchlistService>();
-        services.AddScoped<IWatchlistReader>(provider => provider.GetRequiredService<WatchlistService>());
+        services.AddScoped<IWatchlistReader, WatchlistReader>();
         services.AddMediator(typeof(SetStatusHandler).Assembly);
 
         return services.BuildServiceProvider();
