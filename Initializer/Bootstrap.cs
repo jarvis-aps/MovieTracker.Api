@@ -150,7 +150,8 @@ app.MapPatch("/movies/{id}/rating", async (int id, int userId, float rating, IMe
 // Что делает: добавляет фильм в общий каталог (не в личные данные). Жанры берутся по id, несуществующие id молча пропускаются.
 //   Личные данные (статус, оценка, заметка) пишутся только через PATCH; лишние поля в теле (в том числе прежние status и notes) игнорируются.
 // Что отдаёт: 201, заголовок Location: /movies/{id} (отдельного GET по id пока нет) и MovieDto нового фильма
-//   (оценка, статус и заметка — null, inWatchlist — false). 400 без тела — фильм с таким названием уже есть.
+//   (оценка, статус и заметка — null, inWatchlist — false). 400 — фильм с таким названием уже есть: эндпоинт отдаёт пустой 400, а UseStatusCodePages дописывает стандартный ProblemDetails «Bad Request»
+//   (причина в теле не названа, формат тот же, что у ошибки биндинга).
 // Тело биндится прямо в неизменяемую команду CreateMovieCommand, дальше её обрабатывает mediator: сначала ValidationBehavior проверяет поля
 //   (title обязателен и не длиннее 200 символов, year от 1888 до текущего года плюс 5, genresId обязателен и не длиннее 10),
 //   затем handler. Нарушение правил — 400 в формате ValidationProblemDetails: словарь errors по полям (title, year, genresId), все ошибки сразу.
@@ -189,3 +190,7 @@ app.MapDelete("/watchlist/{movieId}", async (int movieId, int userId, WatchlistS
 });
 
 await app.InitAndRunAsync();
+
+// Top-level statements прячут класс Program (он internal). WebApplicationFactory<Program> в тестовом проекте использует его как «точку входа»,
+// чтобы поднять настоящее приложение в памяти; эта строка делает класс видимым, больше она ничего не меняет
+public partial class Program;

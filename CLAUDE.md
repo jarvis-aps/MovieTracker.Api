@@ -37,6 +37,8 @@ dotnet watch run                # запуск с hot reload
 
 `MovieTracker.Api.Tests` (xUnit + Testcontainers, задача 3.6): сервисы проверяются против настоящего Postgres 17, который тест сам поднимает в отдельном контейнере на случайном порту — `movietracker-db` и порт 5432 не затрагиваются. **OrbStack должен быть запущен** (включает пользователь, агент его не запускает).
 
+HTTP-слой (задача 3.23): тесты `*HttpTests.cs` и `HttpCommonTests.cs` идут через `ApiFactory` (`WebApplicationFactory<Program>`) — настоящее приложение в памяти против того же контейнера Postgres (`postgres.Api.CreateClient()` после `CreateDatabaseAsync()`). Для этого в конце `Bootstrap.cs` стоит `public partial class Program;` (иначе класс из top-level statements скрыт от тестового проекта). Фабрика подменяет строку подключения, сверяет её до первого запроса (защита рабочей базы `movietracker-db`) и убирает сидеры: при поднятии хоста они запускаются сами и засорили бы данные теста. Известные дефекты в HTTP-тестах не закрепляются: тест на дефект пишется первым, красным, и только потом дефект чинится.
+
 ```bash
 dotnet test MovieTracker.Api.Tests    # весь набор, ~10 с вместе со сборкой
 ```
@@ -78,7 +80,7 @@ Commands/             # команды CQRS и их handler'ы (SetStatusCommand
 Queries/              # запросы CQRS и их handler'ы (GetMoviesQuery/GetMoviesHandler, 3.15); запрос — неизменяемая запись, дефолты page/pageSize лежат в ней и биндятся через [AsParameters] прямо из query-строки; вся логика запроса (фильтры, сортировки, границы страницы, totalCount, личный вид пользователя) живёт в самом GetMoviesHandler (3.19)
 Migrations/           # генерируется EF Core, руками не редактировать
 client/               # React + TypeScript + Vite, отдельный фронтенд-проект
-MovieTracker.Api.Tests/  # xUnit + Testcontainers: тесты сервисов против Postgres в контейнере (3.6); отдельный проект, в компиляцию приложения не входит
+MovieTracker.Api.Tests/  # xUnit + Testcontainers: тесты сервисов, handler'ов и HTTP-слоя (3.23, WebApplicationFactory) против Postgres в контейнере (3.6); отдельный проект, в компиляцию приложения не входит
 ```
 
 Namespace'ы соответствуют папкам (`MovieTracker.Api.Models`, `MovieTracker.Api.Initializer`, `MovieTracker.Api.Seeders`) — стандартная C#-конвенция, Rider иначе подсвечивает warning. Эндпоинты (`MapGet`/`MapPatch`/`MapPost`) остаются инлайн в `Bootstrap.cs`, **намеренно** не растащены на `Endpoints/`/`Controllers/` — это уже следующий уровень структуры, вводить его сейчас значило бы architecture без повода.

@@ -17,6 +17,15 @@ public class PostgresFixture : IAsyncLifetime
 
     private TestDatabase _database = null!;
     private Respawner _respawner = null!;
+    private ApiFactory? _api;
+
+    // Приложение для HTTP-тестов: строится при первом обращении (тестам без HTTP оно не нужно) и живёт до конца прогона.
+    // Хост поднимается дольше, чем создаётся клиент, поэтому один на все тесты; HttpClient у него дешёвый, берётся на каждый тест.
+    // Тесты одной коллекции идут по очереди, поэтому обычного «если ещё нет — создать» достаточно
+    public ApiFactory Api => _api ??= new ApiFactory(ConnectionString);
+
+    // Нужна тесту, которому требуется собственное приложение, а не общее (проверка, что сидеры не запускаются)
+    public string ConnectionString => _container.GetConnectionString();
 
     public async Task InitializeAsync()
     {
@@ -43,7 +52,14 @@ public class PostgresFixture : IAsyncLifetime
         });
     }
 
-    public Task DisposeAsync() => _container.DisposeAsync().AsTask();
+    public async Task DisposeAsync()
+    {
+        // Сначала приложение (оно держит соединения с базой), потом контейнер
+        if (_api is not null)
+            await _api.DisposeAsync();
+
+        await _container.DisposeAsync();
+    }
 
     // Очищает все таблицы (схема остаётся) и отдаёт ту же базу: каждый тест начинает с пустых таблиц.
     // Тесты одной коллекции идут по очереди, поэтому очистка не может задеть работающий тест
