@@ -74,4 +74,34 @@ public class SetStatusCommandTests(PostgresFixture postgres)
         Assert.Equal(Status.Watched, second?.Status);
         Assert.Equal(1, await db.CountUserDataAsync(userId, movieId));
     }
+
+    // Проверка стоит в конвейере до handler'а: команда с недопустимым статусом бросает исключение проверки и ничего не создаёт
+    [Fact]
+    public async Task Send_UndefinedStatus_ThrowsValidationExceptionAndSavesNothing()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var movieId = await db.AddMovieAsync("Дюна");
+        await using var provider = MediatorTestProvider.Build(db);
+        using var scope = provider.CreateScope();
+
+        var exception = await Assert.ThrowsAsync<RequestValidationException>(() =>
+            scope.ServiceProvider.GetRequiredService<IMediator>().Send(new SetStatusCommand(movieId, userId, (Status)7)));
+
+        Assert.Equal("status", Assert.Single(exception.Errors).Field);
+        Assert.Equal(0, await db.CountUserDataAsync(userId, movieId));
+    }
+
+    // Валидатор находит сканирование сборки, отдельной регистрации у него нет: если его не найдут, проверка молча перестанет работать
+    [Fact]
+    public async Task AddMediator_RegistersValidatorOfSetStatusCommand()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        await using var provider = MediatorTestProvider.Build(db);
+        using var scope = provider.CreateScope();
+
+        var validators = scope.ServiceProvider.GetServices<IValidator<SetStatusCommand>>();
+
+        Assert.IsType<SetStatusValidator>(Assert.Single(validators));
+    }
 }

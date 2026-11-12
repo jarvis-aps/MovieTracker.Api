@@ -99,10 +99,23 @@ app.MapGet("/movies", async ([AsParameters] GetMoviesQuery query, IMediator medi
 // PATCH /movies/{id}/status?userId=1&status=Watched
 // Что делает: ставит пользователю статус фильма (NotWatched, Watching, Watched). Если личной записи ещё нет — создаёт её.
 // Что отдаёт: 200 и личную запись UserMovieDataDto (movieId, статус, оценка, заметка) без данных каталога.
-//   404 — нет такого фильма или пользователя; 400 — статус не из списка.
+//   404 — нет такого фильма или пользователя. 400 двух видов: статус не распознан (не число и не имя, пустое значение, число не влезает в int) —
+//   ProblemDetails от биндинга; статус распознан, но такого значения в enum нет (число вне 0–2, склейка имён вроде Watched,Watching) —
+//   ValidationProblemDetails с ошибкой в поле status. Числа 0–2 допустимы наравне с именами.
+//   Проверку делает SetStatusValidator в конвейере mediator до handler'а, поэтому недопустимый статус у несуществующего фильма даёт 400, а не 404.
 app.MapPatch("/movies/{id}/status", async (int id, int userId, Status status, IMediator mediator) =>
 {
-    var result = await mediator.Send(new SetStatusCommand(id, userId, status));
+    UserMovieDataDto? result;
+
+    try
+    {
+        result = await mediator.Send(new SetStatusCommand(id, userId, status));
+    }
+    catch (RequestValidationException exception)
+    {
+        return Results.ValidationProblem(exception.ToErrorsByField());
+    }
+
     return result is null ? Results.NotFound() : Results.Ok(result);
 });
 

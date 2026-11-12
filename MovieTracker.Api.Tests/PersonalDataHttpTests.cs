@@ -47,6 +47,79 @@ public class PersonalDataHttpTests(PostgresFixture postgres)
         Assert.Equal(0, await db.CountUserDataAsync(userId, movieId));
     }
 
+    // Допустимые значения: имена из enum и числа 0–2 (решение 3.25, вариант Б: отклоняется только то, чего в enum нет, числа остаются
+    // рабочими). Статус сохраняется ровно тот, что в списке
+    [Theory]
+    [InlineData("NotWatched", 0)]
+    [InlineData("Watching", 1)]
+    [InlineData("Watched", 2)]
+    [InlineData("0", 0)]
+    [InlineData("1", 1)]
+    [InlineData("2", 2)]
+    public async Task PatchStatus_DefinedValue_IsSaved(string status, int expected)
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var movieId = await db.AddMovieAsync("Дюна");
+        var client = postgres.Api.CreateClient();
+
+        var response = await client.PatchAsync($"/movies/{movieId}/status?userId={userId}&status={status}", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(expected, (int?)(await db.GetUserDataAsync(userId, movieId))?.Status);
+    }
+
+    // Недопустимое значение (число вне списка или склейка имён: «Watched,Watching» EF-парсер читал как 3) отвечает 400 в формате
+    // ValidationProblemDetails с ошибкой в поле status и ничего не сохраняет. Раньше такие значения отвечали 200 и попадали в базу
+    [Theory]
+    [InlineData("7")]
+    [InlineData("-1")]
+    [InlineData("3")]
+    [InlineData("Watched,Watching")]
+    public async Task PatchStatus_UndefinedValue_Returns400WithStatusErrorAndSavesNothing(string status)
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var movieId = await db.AddMovieAsync("Дюна");
+        var client = postgres.Api.CreateClient();
+
+        var response = await client.PatchAsync($"/movies/{movieId}/status?userId={userId}&status={status}", null);
+
+        var problem = await HttpAssert.ValidationProblemAsync(response);
+        Assert.Equal("status", Assert.Single(problem.Errors).Key);
+        Assert.Equal(0, await db.CountUserDataAsync(userId, movieId));
+    }
+
+    // Отклонённый запрос не трогает уже сохранённый статус
+    [Fact]
+    public async Task PatchStatus_UndefinedValue_LeavesExistingStatusUnchanged()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var movieId = await db.AddMovieAsync("Дюна");
+        await db.AddUserDataAsync(userId, movieId, Status.Watched);
+        var client = postgres.Api.CreateClient();
+
+        var response = await client.PatchAsync($"/movies/{movieId}/status?userId={userId}&status=7", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(Status.Watched, (await db.GetUserDataAsync(userId, movieId))?.Status);
+    }
+
+    // Следствие решения 2А: проверка идёт в конвейере до handler'а, поэтому недопустимый статус у несуществующего фильма даёт 400, а не 404.
+    // У оценки и заметки порядок обратный (там проверка в handler'е после существования): сначала 404
+    [Fact]
+    public async Task PatchStatus_UndefinedValueForUnknownMovie_Returns400BeforeNotFound()
+    {
+        var db = await postgres.CreateDatabaseAsync();
+        var userId = await db.AddUserAsync();
+        var client = postgres.Api.CreateClient();
+
+        var response = await client.PatchAsync($"/movies/9999/status?userId={userId}&status=7", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     // ---------- notes ----------
 
     [Fact]

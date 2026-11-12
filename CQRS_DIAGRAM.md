@@ -1,6 +1,6 @@
 # Схема CQRS в MovieTracker
 
-Обновлено: 2026-11-12 (состояние после задачи 3.24: watchlist ушёл в mediator). Раскладка сверху вниз: горизонтальная версия выросла до 3669 px в ширину (первая была 3060) и перестала читаться; стрелки от конвейера к handler'ам теперь выходят из рамки Mediator целиком. Схема составлена вручную по коду проекта и отражает путь запроса через mediator, который автоматический разбор кода не показывает (handler находится во время работы по типу сообщения). При изменении архитектуры схему нужно обновлять руками. Интерактивная версия с таблицей соответствия учебной картинке была опубликована как артефакт в сессии Claude Code; это снимок на состояние после задачи 3.21 (без проверки в конвейере), сам он не обновляется.
+Обновлено: 2026-11-12 (состояние после задачи 3.25: проверка статуса в конвейере; до неё задача 3.24: watchlist ушёл в mediator). Раскладка сверху вниз: горизонтальная версия выросла до 3669 px в ширину (первая была 3060) и перестала читаться; стрелки от конвейера к handler'ам теперь выходят из рамки Mediator целиком. Схема составлена вручную по коду проекта и отражает путь запроса через mediator, который автоматический разбор кода не показывает (handler находится во время работы по типу сообщения). При изменении архитектуры схему нужно обновлять руками. Интерактивная версия с таблицей соответствия учебной картинке была опубликована как артефакт в сессии Claude Code; это снимок на состояние после задачи 3.21 (без проверки в конвейере), сам он не обновляется.
 
 ```mermaid
 %%{init: {"flowchart": {"nodeSpacing": 16, "rankSpacing": 36, "wrappingWidth": 130, "padding": 8}}}%%
@@ -34,6 +34,7 @@ flowchart TB
         h4["CreateMovieHandler<br/>дубликат: null, то есть 400"]
         h6["AddToWatchlistHandler<br/>идемпотентный: гонка (нарушение<br/>индекса) считается успехом"]
         h7["RemoveFromWatchlistHandler<br/>один DELETE, идемпотентный"]
+        v1["SetStatusValidator<br/>статус только из enum Status"]
         v4["CreateMovieValidator<br/>название до 200 символов, год 1888 и до<br/>текущего плюс 5, жанры: список до 10"]
         writer["UserMovieDataWriter<br/>существование, найти или создать запись,<br/>сохранить с повтором при гонке"]
     end
@@ -62,6 +63,7 @@ flowchart TB
     med --> h6
     med --> h7
     med --> h5
+    med -.->|проверяет| v1
     med -.->|проверяет| v4
 
     h1 --> writer
@@ -80,7 +82,7 @@ flowchart TB
     classDef write fill:#fdf1e3,stroke:#b45309,color:#18202e
     classDef read fill:#e2f4f1,stroke:#0f766e,color:#18202e
     classDef infra fill:#efe9fc,stroke:#6140b8,color:#18202e
-    class e1,e2,e3,e4,e6,h1,h2,h3,h4,h6,h7,v4,writer write
+    class e1,e2,e3,e4,e6,h1,h2,h3,h4,h6,h7,v1,v4,writer write
     class e5,h5,reader,wl read
     class send,timing,validation infra
     style http fill:none,stroke:#9aa5b8
@@ -89,7 +91,7 @@ flowchart TB
     style read fill:none,stroke:#62bbb0
 ```
 
-Эндпоинты описаны в `Initializer/Bootstrap.cs`. Ответ идёт тем же путём назад. Результат в код ответа переводит эндпоинт: `null` даёт 404 у `PATCH` и 400 у `POST`, исключения о неверных границах (`InvalidRatingException`, `InvalidNotesException`, `InvalidPageSizeException`) дают 400, успех даёт 200 (у `POST` 201). У `PUT` и `DELETE` watchlist ответ команды `bool`: `false` (нет фильма или пользователя) даёт 404, `true` даёт 204 без тела. Нарушение правил `POST` (`RequestValidationException` из `ValidationBehavior`) эндпоинт переводит в 400 в формате `ValidationProblemDetails`: словарь `errors` по полям `title`, `year`, `genresId`, все ошибки сразу; handler при этом не вызывается. Замер (`TimingBehavior`) стоит снаружи проверки, поэтому пишет время и для отклонённых запросов.
+Эндпоинты описаны в `Initializer/Bootstrap.cs`. Ответ идёт тем же путём назад. Результат в код ответа переводит эндпоинт: `null` даёт 404 у `PATCH` и 400 у `POST`, исключения о неверных границах (`InvalidRatingException`, `InvalidNotesException`, `InvalidPageSizeException`) дают 400, успех даёт 200 (у `POST` 201). У `PUT` и `DELETE` watchlist ответ команды `bool`: `false` (нет фильма или пользователя) даёт 404, `true` даёт 204 без тела. Нарушение правил `POST` и `PATCH` статуса (`RequestValidationException` из `ValidationBehavior`) эндпоинт переводит в 400 в формате `ValidationProblemDetails`: словарь `errors` по полям (`title`, `year`, `genresId` у `POST`, `status` у `PATCH`), все ошибки сразу; handler при этом не вызывается, поэтому недопустимый статус у несуществующего фильма даёт 400, а не 404. Замер (`TimingBehavior`) стоит снаружи проверки, поэтому пишет время и для отклонённых запросов.
 
 ## Чем проект отличается от учебной картинки «Client, Command Model, Write, Event, Read, Query Model»
 
